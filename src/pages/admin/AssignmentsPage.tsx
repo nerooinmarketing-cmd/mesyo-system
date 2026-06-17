@@ -1,23 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
-import { Button, useToast } from '@/components/ui'
-import { DEMO_STUDENTS, DEMO_CLASSROOMS } from '@/lib/demo-data'
+import { Button, useToast, Alert } from '@/components/ui'
 import { waLink, assignmentMessage } from '@/lib/utils'
-
-interface Assignment {
-  id: number; title: string; description: string
-  classId: string; dueDate: string; createdAt: string; sentCount: number
-}
-
-const DEMO_ASSIGNMENTS: Assignment[] = [
-  {id:1, title:'Fatiha Suresi Tekrarı', description:'Fatiha suresini akıcı okuma çalışması yapılacak.', classId:'c1', dueDate:'2026-06-20', createdAt:'2026-06-14', sentCount:5},
-  {id:2, title:'Namaz Duaları',         description:'Sübhaneke ve Ettehiyyatü dualarını ezberle.',    classId:'c1', dueDate:'2026-06-16', createdAt:'2026-06-10', sentCount:5},
-]
+import { classroomsApi, studentsApi, assignmentsApi, seasonsApi } from '@/lib/api'
 
 export default function AssignmentsPage() {
   const { toast } = useToast()
-  const [assignments, setAssignments] = useState<Assignment[]>(DEMO_ASSIGNMENTS)
-  const [selCls, setSelCls] = useState(DEMO_CLASSROOMS[0]?.id || '')
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [classrooms, setClassrooms] = useState<any[]>([])
+  const [students, setStudents] = useState<any[]>([])
+  const [assignments, setAssignments] = useState<any[]>([])
+
+  const [selCls, setSelCls] = useState('')
   const [selStudents, setSelStudents] = useState<string[]>([])
   const [toAll, setToAll] = useState(true)
   const [title, setTitle] = useState('')
@@ -27,8 +23,38 @@ export default function AssignmentsPage() {
   const [sentIdx, setSentIdx] = useState(0)
   const [tab, setTab] = useState<'gonder'|'gecmis'>('gonder')
 
-  const cls = DEMO_CLASSROOMS.find(c => c.id === selCls)
-  const clsStudents = DEMO_STUDENTS.filter(s => s.classroom_id === selCls && s.status === 'approved')
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const seasonList = await seasonsApi.list()
+        const activeSeason = seasonList.find((s: any) => s.is_active) || seasonList[0]
+        const seasonId = activeSeason?.id
+
+        const [clsList, stdList, asgList] = await Promise.all([
+          classroomsApi.list(seasonId || undefined),
+          studentsApi.list({ season_id: seasonId || undefined }),
+          assignmentsApi.list(),
+        ])
+        if (cancelled) return
+        setClassrooms(clsList)
+        setStudents(stdList)
+        setAssignments(asgList)
+        if (clsList.length) setSelCls(clsList[0].id)
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Veriler yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  const cls = classrooms.find(c => c.id === selCls)
+  const clsStudents = students.filter(s => s.classroom_id === selCls && s.status === 'approved')
   const targets = toAll ? clsStudents : clsStudents.filter(s => selStudents.includes(s.id))
 
   const toggleSel = (id: string) => setSelStudents(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
@@ -44,11 +70,19 @@ export default function AssignmentsPage() {
       }, i * 700)
     })
     await new Promise(r => setTimeout(r, targets.length * 700 + 500))
-    setAssignments(p => [{
-      id: Date.now(), title, description: desc, classId: selCls,
-      dueDate: dueDate || '', createdAt: new Date().toISOString().split('T')[0], sentCount: targets.length
-    }, ...p])
-    toast(`📱 ${targets.length} veliye ödev gönderildi!`, 'success')
+    try {
+      const created = await assignmentsApi.create({
+        classroom_id: selCls,
+        title,
+        description: desc,
+        due_date: dueDate || undefined,
+        student_ids: targets.map(s => s.id),
+      })
+      setAssignments(p => [created, ...p])
+      toast(`📱 ${targets.length} veliye ödev gönderildi!`, 'success')
+    } catch (e: any) {
+      toast(e.message || 'Ödev kaydedilemedi, ama mesajlar gönderildi', 'error')
+    }
     setSending(false); setTitle(''); setDesc(''); setDueDate(''); setSelStudents([])
   }
 
@@ -57,6 +91,36 @@ export default function AssignmentsPage() {
     window.open(waLink(s.parent_phone, assignmentMessage((s.first_name + ' ' + s.last_name), (s.parent_first_name + ' ' + s.parent_last_name), cls?.name || '', title, desc, dueDate || undefined)), '_blank')
     toast(`${(s.first_name + ' ' + s.last_name)} için ödev gönderildi 📱`, 'success')
   }
+
+  const removeAssignment = async (id: string) => {
+    try {
+      await assignmentsApi.delete(id)
+      setAssignments(p => p.filter(x => x.id !== id))
+    } catch (e: any) {
+      toast(e.message || 'Silme işlemi başarısız oldu', 'error')
+    }
+  }
+
+  if (loading) return (
+    <AdminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </AdminLayout>
+  )
+
+  if (loadError) return (
+    <AdminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </AdminLayout>
+  )
 
   return (
     <AdminLayout>
@@ -105,7 +169,7 @@ export default function AssignmentsPage() {
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Sınıf</label>
                 <select value={selCls} onChange={e=>{setSelCls(e.target.value);setSelStudents([])}}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
-                  {DEMO_CLASSROOMS.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                  {classrooms.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
 
@@ -174,7 +238,7 @@ export default function AssignmentsPage() {
             {assignments.length === 0
               ? <div className="text-center py-12 bg-white rounded-xl shadow-sm text-gray-400"><div className="text-3xl mb-2">📚</div><p className="text-sm">Henüz ödev gönderilmedi</p></div>
               : assignments.map(a=>{
-                  const cls = DEMO_CLASSROOMS.find(c=>c.id===a.classId)
+                  const assignmentCls = classrooms.find(c=>c.id===a.classroom_id)
                   return (
                     <div key={a.id} className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-amber-400">
                       <div className="flex items-start justify-between gap-2">
@@ -182,13 +246,13 @@ export default function AssignmentsPage() {
                           <div className="text-sm font-bold text-gray-900">{a.title}</div>
                           <div className="text-xs text-gray-500 mt-0.5">{a.description}</div>
                           <div className="flex gap-2 mt-1.5 flex-wrap">
-                            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{cls?.name}</span>
-                            <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">{a.sentCount} kişi</span>
-                            {a.dueDate && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">⏰ {a.dueDate}</span>}
-                            <span className="text-[10px] text-gray-400">{a.createdAt}</span>
+                            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{assignmentCls?.name}</span>
+                            <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">{a.sent_count} kişi</span>
+                            {a.due_date && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">⏰ {a.due_date}</span>}
+                            <span className="text-[10px] text-gray-400">{a.created_at?.split('T')[0]}</span>
                           </div>
                         </div>
-                        <button onClick={()=>setAssignments(p=>p.filter(x=>x.id!==a.id))}
+                        <button onClick={()=>removeAssignment(a.id)}
                           className="text-gray-300 hover:text-red-400 text-xl leading-none flex-shrink-0">×</button>
                       </div>
                     </div>

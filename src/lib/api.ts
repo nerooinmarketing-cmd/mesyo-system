@@ -154,3 +154,23 @@ export const publicApi = {
   institutionBySlug: (slug: string) =>
     req<{ id: string; name: string; city: string; is_active: boolean }>(`/public/institution/${slug}`),
 }
+
+// ── ASSIGNMENTS ────────────────────────────────────────────────────────────────
+export const assignmentsApi = {
+  list: (classroom_id?: string) =>
+    req<any[]>(`/assignments${classroom_id ? `?classroom_id=${classroom_id}` : ''}`),
+  create: (data: { classroom_id: string; title: string; description: string; due_date?: string; student_ids: string[] }) =>
+    req<any>('/assignments', { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    req(`/assignments/${id}`, { method: 'DELETE' }),
+}
+
+// ── SKILLS / PERFORMANCE ─────────────────────────────────────────────────────────
+export const skillsApi = {
+  list: () => req<{ id: string; name: string; category: string | null; sort_order: number }[]>('/skills'),
+  classroomLevels: (classroomId: string) =>
+    req<Record<string, Record<string, string>>>(`/skills/classroom/${classroomId}`),
+  updateLevels: (updates: { student_id: string; skill_id: string; level: string }[]) =>
+    req('/skills/levels', { method: 'POST', body: JSON.stringify({ updates }) }),
+}
+
