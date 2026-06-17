@@ -1,0 +1,1 @@
+export default function OdevPage() { return <div className="p-4 text-gray-400">Ödev — yakında</div> }
