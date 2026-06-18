@@ -1,14 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
-import { Button, Modal, Input, Select, Badge, ProgressBar, useToast, EmptyState } from '@/components/ui'
+import { Button, Modal, Input, Select, Badge, ProgressBar, useToast, EmptyState, Alert } from '@/components/ui'
 import { calcAge } from '@/lib/utils'
-import { DEMO_STUDENTS, DEMO_CLASSROOMS, DEMO_TEACHERS } from '@/lib/demo-data'
+import { classroomsApi, teachersApi, studentsApi, seasonsApi } from '@/lib/api'
 
 export default function ClassroomsPage() {
   const { toast } = useToast()
-  const [classrooms, setClassrooms] = useState(DEMO_CLASSROOMS)
-  const [teachers] = useState(DEMO_TEACHERS)
-  const [students, setStudents] = useState(DEMO_STUDENTS)
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [seasonId, setSeasonId] = useState('')
+
+  const [classrooms, setClassrooms] = useState<any[]>([])
+  const [teachers, setTeachers] = useState<any[]>([])
+  const [students, setStudents] = useState<any[]>([])
+
   const [addModal, setAddModal] = useState(false)
   const [editModal, setEditModal] = useState<{open:boolean;cls:any|null}>({open:false,cls:null})
   const [editForm, setEditForm] = useState({name:'',age_group:'',capacity:'20'})
@@ -19,6 +25,38 @@ export default function ClassroomsPage() {
   const [asnSearch, setAsnSearch] = useState('')
   const [asnAge, setAsnAge] = useState('')
   const [selectedStd, setSelectedStd] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const seasonList = await seasonsApi.list()
+        if (cancelled) return
+        const activeSeason = seasonList.find((s: any) => s.is_active) || seasonList[0]
+        const sid = activeSeason?.id || ''
+        setSeasonId(sid)
+
+        const [clsList, tchList, stdList] = await Promise.all([
+          classroomsApi.list(sid || undefined),
+          teachersApi.list(),
+          studentsApi.list({ season_id: sid || undefined }),
+        ])
+        if (cancelled) return
+        setClassrooms(clsList)
+        setTeachers(tchList)
+        setStudents(stdList)
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Veriler yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
   const unassigned = students.filter(s => !s.classroom_id)
   const filteredUnassigned = unassigned.filter(s => {
@@ -30,10 +68,23 @@ export default function ClassroomsPage() {
 
   const clsStudentCount = (cid: string) => students.filter(s => s.classroom_id === cid).length
 
-  const addClass = () => {
+  const addClass = async () => {
     if (!addForm.name) { toast('Sınıf adı girin','error'); return }
-    setClassrooms(p => [...p, {id:'c'+Date.now(),name:addForm.name,age_group:addForm.age_group,capacity:parseInt(addForm.capacity)||20,student_count:0,teacher_id:null,teacher_name:null,is_active:true}])
-    toast('Sınıf oluşturuldu ✅','success'); setAddModal(false); setAddForm({name:'',age_group:'',capacity:'20'})
+    setSaving(true)
+    try {
+      const created = await classroomsApi.create({
+        name: addForm.name,
+        age_group: addForm.age_group || undefined,
+        capacity: parseInt(addForm.capacity) || 20,
+        season_id: seasonId,
+      })
+      setClassrooms(p => [...p, created])
+      toast('Sınıf oluşturuldu ✅','success'); setAddModal(false); setAddForm({name:'',age_group:'',capacity:'20'})
+    } catch (e: any) {
+      toast(e.message || 'Sınıf oluşturulamadı', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const openEdit = (cls: any) => {
@@ -41,33 +92,88 @@ export default function ClassroomsPage() {
     setEditModal({open:true, cls})
   }
 
-  const saveEdit = () => {
-    setClassrooms(p => p.map(c => c.id===editModal.cls?.id
-      ? {...c, name:editForm.name, age_group:editForm.age_group, capacity:parseInt(editForm.capacity)||20}
-      : c))
-    toast('Sınıf güncellendi ✅','success'); setEditModal({open:false,cls:null})
+  const saveEdit = async () => {
+    if (!editModal.cls) return
+    setSaving(true)
+    try {
+      const updated = await classroomsApi.update(editModal.cls.id, {
+        name: editForm.name,
+        age_group: editForm.age_group || undefined,
+        capacity: parseInt(editForm.capacity) || 20,
+      })
+      setClassrooms(p => p.map(c => c.id === updated.id ? updated : c))
+      toast('Sınıf güncellendi ✅','success'); setEditModal({open:false,cls:null})
+    } catch (e: any) {
+      toast(e.message || 'Güncelleme başarısız oldu', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const doDelete = (cid: string, name: string) => {
+  const doDelete = async (cid: string, name: string) => {
     if (!confirm(`"${name}" sınıfı silinsin mi? Öğrenci atamaları da kaldırılacak.`)) return
-    setClassrooms(p => p.filter(c => c.id !== cid))
-    setStudents(p => p.map(s => s.classroom_id === cid ? {...s, classroom_id: null} : s))
-    toast(`${name} silindi`, 'info')
+    try {
+      await classroomsApi.delete(cid)
+      setClassrooms(p => p.filter(c => c.id !== cid))
+      setStudents(p => p.map(s => s.classroom_id === cid ? {...s, classroom_id: null} : s))
+      toast(`${name} silindi`, 'info')
+    } catch (e: any) {
+      toast(e.message || 'Silme işlemi başarısız oldu', 'error')
+    }
   }
 
-  const assignStudents = () => {
+  const assignStudents = async () => {
     if (!selectedStd.size) { toast('Öğrenci seçin','error'); return }
-    setStudents(p => p.map(s => selectedStd.has(s.id) ? {...s, classroom_id: asnStdModal.clsId} : s))
-    toast(`${selectedStd.size} öğrenci atandı ✅`,'success')
-    setAsnStdModal(p=>({...p,open:false})); setSelectedStd(new Set())
+    setSaving(true)
+    try {
+      // Backend tek tek öğrenci-sınıf ataması yapıyor, hepsini paralel gönderiyoruz
+      await Promise.all(
+        Array.from(selectedStd).map(sid => studentsApi.assignClassroom(sid, asnStdModal.clsId))
+      )
+      setStudents(p => p.map(s => selectedStd.has(s.id) ? {...s, classroom_id: asnStdModal.clsId} : s))
+      toast(`${selectedStd.size} öğrenci atandı ✅`,'success')
+      setAsnStdModal(p=>({...p,open:false})); setSelectedStd(new Set())
+    } catch (e: any) {
+      toast(e.message || 'Atama başarısız oldu', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const assignTeacher = () => {
+  const assignTeacher = async () => {
     if (!asnTchId) { toast('Öğretmen seçin','error'); return }
-    const tch = teachers.find(t=>t.id===asnTchId)
-    setClassrooms(p => p.map(c => c.id===asnTchModal.clsId ? {...c,teacher_id:asnTchId,teacher_name:tch?.full_name||null} : c))
-    toast('Öğretmen atandı ✅','success'); setAsnTchModal(p=>({...p,open:false}))
+    setSaving(true)
+    try {
+      const updated = await classroomsApi.assignTeacher(asnTchModal.clsId, asnTchId)
+      setClassrooms(p => p.map(c => c.id === asnTchModal.clsId ? updated : c))
+      toast('Öğretmen atandı ✅','success'); setAsnTchModal(p=>({...p,open:false}))
+    } catch (e: any) {
+      toast(e.message || 'Atama başarısız oldu', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
+
+  if (loading) return (
+    <AdminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </AdminLayout>
+  )
+
+  if (loadError) return (
+    <AdminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </AdminLayout>
+  )
 
   return (
     <AdminLayout>
@@ -82,6 +188,7 @@ export default function ClassroomsPage() {
             {classrooms.map(c => {
               const cnt = clsStudentCount(c.id)
               const pct = Math.round(cnt/c.capacity*100)
+              const teacherName = teachers.find(t => t.id === c.teacher_id)?.full_name || c.teacher_name
               return (
                 <div key={c.id} className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-green-500">
                   <div className="flex justify-between items-start mb-2">
@@ -92,7 +199,7 @@ export default function ClassroomsPage() {
                     <Badge variant={cnt>=c.capacity?'red':cnt>0?'green':'gray'}>{cnt>=c.capacity?'Dolu':cnt>0?'Aktif':'Boş'}</Badge>
                   </div>
                   <div className="text-sm text-gray-500 mb-2">
-                    👨‍🏫 {c.teacher_name || <span className="text-red-400">Öğretmen atanmamış</span>}
+                    👨‍🏫 {teacherName || <span className="text-red-400">Öğretmen atanmamış</span>}
                   </div>
                   <div className="flex justify-between text-xs text-gray-400 mb-1"><span>Doluluk</span><span>{cnt}/{c.capacity}</span></div>
                   <ProgressBar value={cnt} max={c.capacity} className="mb-3" />
@@ -116,7 +223,7 @@ export default function ClassroomsPage() {
 
       {/* Ekle */}
       <Modal open={addModal} onClose={() => setAddModal(false)} title="🏫 Yeni Sınıf"
-        footer={<><Button variant="outline" onClick={() => setAddModal(false)}>İptal</Button><Button onClick={addClass}>Oluştur</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setAddModal(false)}>İptal</Button><Button onClick={addClass} loading={saving}>Oluştur</Button></>}>
         <Input label="Sınıf Adı" placeholder="örn: Sabah Grubu" value={addForm.name} onChange={e => setAddForm(p=>({...p,name:e.target.value}))} />
         <div className="grid grid-cols-2 gap-3">
           <Input label="Yaş Grubu" placeholder="örn: 7-9" value={addForm.age_group} onChange={e => setAddForm(p=>({...p,age_group:e.target.value}))} />
@@ -127,7 +234,7 @@ export default function ClassroomsPage() {
       {/* Düzenle */}
       <Modal open={editModal.open} onClose={() => setEditModal(p=>({...p,open:false}))}
         title={`✏️ ${editModal.cls?.name}`}
-        footer={<><Button variant="outline" onClick={() => setEditModal(p=>({...p,open:false}))}>İptal</Button><Button onClick={saveEdit}>Kaydet</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setEditModal(p=>({...p,open:false}))}>İptal</Button><Button onClick={saveEdit} loading={saving}>Kaydet</Button></>}>
         <Input label="Sınıf Adı" value={editForm.name} onChange={e => setEditForm(p=>({...p,name:e.target.value}))} />
         <div className="grid grid-cols-2 gap-3">
           <Input label="Yaş Grubu" placeholder="örn: 7-9" value={editForm.age_group} onChange={e => setEditForm(p=>({...p,age_group:e.target.value}))} />
@@ -138,7 +245,7 @@ export default function ClassroomsPage() {
       {/* Öğrenci Seç */}
       <Modal open={asnStdModal.open} onClose={() => setAsnStdModal(p=>({...p,open:false}))}
         title={`👥 Öğrenci Seç — ${asnStdModal.clsName}`} wide
-        footer={<><Button variant="outline" onClick={() => setAsnStdModal(p=>({...p,open:false}))}>İptal</Button><Button onClick={assignStudents}>Seçilenleri Ata</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setAsnStdModal(p=>({...p,open:false}))}>İptal</Button><Button onClick={assignStudents} loading={saving}>Seçilenleri Ata</Button></>}>
         <div className="flex gap-2 mb-3 flex-wrap">
           <input type="text" placeholder="🔍 Ara..." value={asnSearch} onChange={e => setAsnSearch(e.target.value)}
             className="flex-1 min-w-32 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
@@ -170,7 +277,7 @@ export default function ClassroomsPage() {
       {/* Öğretmen Ata */}
       <Modal open={asnTchModal.open} onClose={() => setAsnTchModal(p=>({...p,open:false}))}
         title={`👨‍🏫 Öğretmen Ata — ${asnTchModal.clsName}`}
-        footer={<><Button variant="outline" onClick={() => setAsnTchModal(p=>({...p,open:false}))}>İptal</Button><Button onClick={assignTeacher}>Ata</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setAsnTchModal(p=>({...p,open:false}))}>İptal</Button><Button onClick={assignTeacher} loading={saving}>Ata</Button></>}>
         <Select label="Öğretmen" value={asnTchId} onChange={e => setAsnTchId(e.target.value)}>
           <option value="">— Seçin —</option>
           {teachers.map(t=><option key={t.id} value={t.id}>{t.full_name}{t.class_name?` (${t.class_name})`:''}</option>)}

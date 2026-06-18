@@ -1,57 +1,84 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { Alert, Badge, useToast } from '@/components/ui'
-import { DEMO_STUDENTS, DEMO_CLASSROOMS } from '@/lib/demo-data'
 import { calcAge, waLink } from '@/lib/utils'
 import { exportStudentsXLSX } from '@/lib/export'
-
-interface Season {
-  id: string; name: string; year: number; archived: boolean
-  archivedAt?: string; studentCount?: number
-}
-
-const DEFAULT_SEASONS: Season[] = [
-  { id: 's2026', name: '2026 Yaz Kursu', year: 2026, archived: false },
-]
-
-
+import { seasonsApi, studentsApi } from '@/lib/api'
 
 export default function SeasonsPage() {
   const { toast } = useToast()
-  const [seasons, setSeasons] = useState<Season[]>(() => {
-    try { const r=localStorage.getItem('mesyo_seasons'); return r?JSON.parse(r):DEFAULT_SEASONS } catch { return DEFAULT_SEASONS }
-  })
-  const [students] = useState(DEMO_STUDENTS.map(s=>({...s,season_id:'s2026'})))
-  const [confirmModal, setConfirmModal] = useState<Season|null>(null)
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [seasons, setSeasons] = useState<any[]>([])
+  const [studentsBySeasonId, setStudentsBySeasonId] = useState<Record<string, any[]>>({})
+
+  const [confirmModal, setConfirmModal] = useState<any|null>(null)
   const [archiving, setArchiving] = useState(false)
-  // Davet mesajı
-  const [inviteModal, setInviteModal] = useState<Season|null>(null)
+  const [inviteModal, setInviteModal] = useState<any|null>(null)
   const [inviteMsg, setInviteMsg] = useState('')
   const [inviteSending, setInviteSending] = useState(false)
   const [sentCount, setSentCount] = useState(0)
 
-  const save = (s: Season[]) => { setSeasons(s); localStorage.setItem('mesyo_seasons',JSON.stringify(s)) }
-  const activeSeason = seasons.find(s=>!s.archived)
+  // İlk yükleme: sezon listesi + her sezonun öğrenci listesi (sezon kapatma/davet ekranı için gerekli)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const seasonList = await seasonsApi.list()
+        if (cancelled) return
+        setSeasons(seasonList)
+
+        // Her sezon için öğrenci sayısını/listesini ayrı ayrı çekiyoruz
+        const studentLists = await Promise.all(
+          seasonList.map((s: any) => studentsApi.list({ season_id: s.id }))
+        )
+        if (cancelled) return
+        const map: Record<string, any[]> = {}
+        seasonList.forEach((s: any, i: number) => { map[s.id] = studentLists[i] })
+        setStudentsBySeasonId(map)
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Veriler yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  const activeSeason = seasons.find(s => s.is_active)
+  const studentsOf = (seasonId: string) => studentsBySeasonId[seasonId] || []
 
   const doArchive = async () => {
     if (!confirmModal) return
     setArchiving(true)
-    const seasonStudents = students.filter(s=>s.season_id===confirmModal.id)
-    exportStudentsXLSX(seasonStudents, confirmModal.name)
-    toast(`📊 Excel indiriliyor...`, 'success')
-    await new Promise(r=>setTimeout(r,1000))
-    const nextYear = confirmModal.year + 1
-    const newSeason: Season = { id:`s${nextYear}`, name:`${nextYear} Yaz Kursu`, year:nextYear, archived:false }
-    const updated = seasons.map(s=>s.id===confirmModal.id
-      ? {...s, archived:true, archivedAt:new Date().toLocaleDateString('tr-TR'), studentCount:seasonStudents.length}
-      : s)
-    updated.push(newSeason)
-    save(updated)
-    setConfirmModal(null); setArchiving(false)
-    toast(`✅ ${confirmModal.name} arşivlendi. ${newSeason.name} oluşturuldu.`, 'success')
+    try {
+      const seasonStudents = studentsOf(confirmModal.id)
+      exportStudentsXLSX(seasonStudents, confirmModal.name)
+      toast(`📊 Excel indiriliyor...`, 'success')
+
+      const nextYear = confirmModal.year + 1
+      // Backend: yeni sezon oluşturunca eski aktif sezon otomatik arşivlenir (seasons.py)
+      const newSeason = await seasonsApi.create({ name: `${nextYear} Yaz Kursu`, year: nextYear })
+
+      setSeasons(p => [
+        ...p.map(s => s.id === confirmModal.id ? { ...s, is_active: false, archived_at: new Date().toISOString() } : s),
+        newSeason,
+      ])
+      setStudentsBySeasonId(p => ({ ...p, [newSeason.id]: [] }))
+      setConfirmModal(null)
+      toast(`✅ ${confirmModal.name} arşivlendi. ${newSeason.name} oluşturuldu.`, 'success')
+    } catch (e: any) {
+      toast(e.message || 'Sezon kapatma işlemi başarısız oldu', 'error')
+    } finally {
+      setArchiving(false)
+    }
   }
 
-  const openInvite = (season: Season) => {
+  const openInvite = (season: any) => {
     const nextYear = season.year + 1
     setInviteMsg(`Sayın Veli,\n\n${season.year} yılında kursumuza katıldığınız için teşekkür ederiz.\n\n${nextYear} yılı eğitim programımız yakında başlayacaktır. Çocuğunuzu yeniden aramızda görmekten mutluluk duyarız.\n\nKayıt ve bilgi için lütfen kurumumuzla iletişime geçiniz.\n\nSaygılarımızla 📚`)
     setInviteModal(season)
@@ -60,7 +87,7 @@ export default function SeasonsPage() {
 
   const sendInvites = async () => {
     if (!inviteModal) return
-    const seasonStudents = students.filter(s=>s.season_id===inviteModal.id)
+    const seasonStudents = studentsOf(inviteModal.id)
     if (!seasonStudents.length) { toast('Bu sezonda öğrenci yok','error'); return }
     setInviteSending(true)
     seasonStudents.forEach((s,i) => {
@@ -75,6 +102,27 @@ export default function SeasonsPage() {
     toast(`📱 ${seasonStudents.length} veliye davet gönderildi!`, 'success')
   }
 
+  if (loading) return (
+    <AdminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </AdminLayout>
+  )
+
+  if (loadError) return (
+    <AdminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </AdminLayout>
+  )
+
   return (
     <AdminLayout>
       <div className="space-y-4">
@@ -85,7 +133,7 @@ export default function SeasonsPage() {
               <div>
                 <div className="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">Aktif Sezon</div>
                 <div className="text-2xl font-extrabold text-gray-900">{activeSeason.name}</div>
-                <div className="text-sm text-gray-500 mt-1">{students.filter(s=>s.season_id===activeSeason.id).length} öğrenci kayıtlı</div>
+                <div className="text-sm text-gray-500 mt-1">{studentsOf(activeSeason.id).length} öğrenci kayıtlı</div>
               </div>
               <div className="flex flex-col items-end gap-2">
                 <Badge variant="green">✅ Aktif</Badge>
@@ -107,21 +155,21 @@ export default function SeasonsPage() {
         {/* Arşivlenmiş Sezonlar */}
         <div>
           <div className="text-sm font-bold text-gray-700 mb-3">📦 Arşivlenmiş Sezonlar</div>
-          {seasons.filter(s=>s.archived).length === 0
+          {seasons.filter(s=>!s.is_active).length === 0
             ? <div className="text-center py-10 text-gray-400 bg-white rounded-xl shadow-sm">
                 <div className="text-4xl mb-2">📦</div>
                 <p className="text-sm">Henüz arşivlenmiş sezon yok</p>
               </div>
-            : seasons.filter(s=>s.archived).reverse().map(s => {
-                const cnt = students.filter(st=>st.season_id===s.id).length
+            : seasons.filter(s=>!s.is_active).reverse().map(s => {
+                const cnt = studentsOf(s.id).length
                 return (
                   <div key={s.id} className="bg-white rounded-xl shadow-sm p-4 mb-3 border-l-4 border-gray-300">
                     <div className="flex items-center justify-between flex-wrap gap-3">
                       <div>
                         <div className="font-bold text-gray-700">{s.name}</div>
                         <div className="text-xs text-gray-400 mt-0.5">
-                          {s.archivedAt?`${s.archivedAt} tarihinde arşivlendi • `:''}
-                          {s.studentCount||cnt} öğrenci
+                          {s.archived_at ? `${new Date(s.archived_at).toLocaleDateString('tr-TR')} tarihinde arşivlendi • ` : ''}
+                          {cnt} öğrenci
                         </div>
                       </div>
                       <div className="flex gap-2 items-center flex-wrap">
@@ -130,7 +178,7 @@ export default function SeasonsPage() {
                           className="px-3 py-1.5 bg-[#25D366] text-white text-xs font-bold rounded-lg hover:bg-[#128C7E]">
                           📱 Velilere Davet Gönder
                         </button>
-                        <button onClick={() => { exportStudentsXLSX(students.filter(st=>st.season_id===s.id),s.name); toast('Excel indiriliyor ⬇️','success') }}
+                        <button onClick={() => { exportStudentsXLSX(studentsOf(s.id),s.name); toast('Excel indiriliyor ⬇️','success') }}
                           className="px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-50">
                           ⬇ Excel
                         </button>
@@ -172,7 +220,7 @@ export default function SeasonsPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={()=>!inviteSending&&setInviteModal(null)}>
           <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
             <div className="text-lg font-bold text-gray-900 mb-1">📱 Velilere Davet Gönder</div>
-            <div className="text-sm text-gray-500 mb-4">{inviteModal.name} — {students.filter(s=>s.season_id===inviteModal.id).length} veli</div>
+            <div className="text-sm text-gray-500 mb-4">{inviteModal.name} — {studentsOf(inviteModal.id).length} veli</div>
 
             <Alert variant="info">Her veliye kişiselleştirilmiş WhatsApp mesajı gönderilecek. Sırayla açılır, gönderin.</Alert>
 
@@ -185,7 +233,7 @@ export default function SeasonsPage() {
 
             {inviteSending && (
               <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-4 text-sm font-semibold text-green-700">
-                📱 Gönderiliyor... {sentCount} / {students.filter(s=>s.season_id===inviteModal.id).length}
+                📱 Gönderiliyor... {sentCount} / {studentsOf(inviteModal.id).length}
               </div>
             )}
 

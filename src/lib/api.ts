@@ -174,3 +174,41 @@ export const skillsApi = {
     req('/skills/levels', { method: 'POST', body: JSON.stringify({ updates }) }),
 }
 
+// ── APPLICATIONS (kurum başvuruları) ──────────────────────────────────────────────
+export const applicationsApi = {
+  list: (status?: string) => req<any[]>(`/applications${status ? `?status_filter=${status}` : ''}`),
+  approve: (id: string, finalSlug: string) =>
+    req<{ institution_id: string; temp_password: string }>(`/applications/${id}/approve`, {
+      method: 'POST', body: JSON.stringify({ final_slug: finalSlug }),
+    }),
+  reject: (id: string, reason?: string) =>
+    req(`/applications/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+}
+
+// ── PAYMENTS (abonelik ödemeleri) ─────────────────────────────────────────────────
+export const paymentsApi = {
+  list: (status?: string) => req<any[]>(`/payments${status ? `?status_filter=${status}` : ''}`),
+  confirm: (id: string, extendOneYear = true) =>
+    req(`/payments/${id}/confirm`, { method: 'POST', body: JSON.stringify({ extend_one_year: extendOneYear }) }),
+}
+
+// ── MODULES ───────────────────────────────────────────────────────────────────────
+export const modulesApi = {
+  allModules: () => req<{ id: string; name: string; description: string; icon: string; category: string; is_default: boolean }[]>('/modules/all'),
+  institutionModules: (institutionId: string) =>
+    req<Record<string, boolean>>(`/modules/institution/${institutionId}`),
+  updateInstitutionModules: (institutionId: string, updates: { module_id: string; is_active: boolean }[]) =>
+    req(`/modules/institution/${institutionId}`, { method: 'POST', body: JSON.stringify({ updates }) }),
+  myModules: () => req<Record<string, boolean>>('/modules/my'),
+}
+
+// ── USERS (superadmin → tüm kurum kullanıcıları) ──────────────────────────────────
+export const usersApi = {
+  list: (role?: string) => req<any[]>(`/users${role ? `?role_filter=${role}` : ''}`),
+  toggleActive: (id: string, is_active: boolean) =>
+    req(`/users/${id}/toggle`, { method: 'POST', body: JSON.stringify({ is_active }) }),
+  resetPassword: (id: string, newPassword: string) =>
+    req(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ new_password: newPassword }) }),
+  delete: (id: string) => req(`/users/${id}`, { method: 'DELETE' }),
+}
+

@@ -1,18 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SuperadminLayout } from '@/components/layout/SuperadminLayout'
+import { Alert } from '@/components/ui'
 import type { Institution } from '@/types'
-
-const DEMO_INSTS: Institution[] = [
-  { id:'i1', slug:'karacihan',   name:'Karacihan Mescidi',   city:'Konya', district:'Karatay',  responsible_name:'Ahmet Yıldız',  responsible_phone:'05321111111', is_active:true,  subscription_status:'active',  subscription_expires_at:'2027-01-01', student_limit:150, created_at:'2025-09-01', student_count:47, teacher_count:3 },
-  { id:'i2', slug:'fatih',       name:'Fatih Camii',         city:'Konya', district:'Selçuklu', responsible_name:'Mehmet Kaya',   responsible_phone:'05322222222', is_active:true,  subscription_status:'trial',   trial_ends_at:'2026-07-01',           student_limit:100, created_at:'2026-04-01', student_count:23, teacher_count:2 },
-  { id:'i3', slug:'merkez',      name:'Merkez Camii',        city:'Konya', district:'Meram',    responsible_name:'Ali Demir',     responsible_phone:'05323333333', is_active:false, subscription_status:'expired',                                       student_limit:200, created_at:'2025-01-01', student_count:0,  teacher_count:0 },
-  { id:'i4', slug:'yenimahalle', name:'Yenimahalle Mescidi', city:'Konya', district:'Karatay',  responsible_name:'Fatma Öz',      responsible_phone:'05324444444', is_active:true,  subscription_status:'active',  subscription_expires_at:'2027-01-01', student_limit:80,  created_at:'2025-09-01', student_count:31, teacher_count:2 },
-  { id:'i5', slug:'havzan',      name:'Havzan Camii',        city:'Konya', district:'Selçuklu', responsible_name:'Hasan Çelik',   responsible_phone:'05325555555', is_active:true,  subscription_status:'trial',   trial_ends_at:'2026-06-30',           student_limit:100, created_at:'2026-05-01', student_count:18, teacher_count:1 },
-  { id:'i6', slug:'selimiye',    name:'Selimiye Camii',      city:'Konya', district:'Selçuklu', responsible_name:'Mustafa Şahin', responsible_phone:'05326666666', is_active:true,  subscription_status:'active',  subscription_expires_at:'2027-06-01', student_limit:120, created_at:'2025-09-01', student_count:62, teacher_count:4 },
-  { id:'i7', slug:'alaaddin',    name:'Alaaddin Camii',      city:'Konya', district:'Karatay',  responsible_name:'İbrahim Koç',   responsible_phone:'05327777777', is_active:true,  subscription_status:'active',  subscription_expires_at:'2027-01-01', student_limit:90,  created_at:'2025-09-01', student_count:38, teacher_count:2 },
-  { id:'i8', slug:'iplikci',     name:'İplikçi Camii',       city:'Konya', district:'Karatay',  responsible_name:'Ramazan Aydın', responsible_phone:'05328888888', is_active:false, subscription_status:'cancelled',                                     student_limit:60,  created_at:'2024-06-01', student_count:0,  teacher_count:0 },
-]
+import { superadminApi } from '@/lib/api'
 
 type FilterType = 'all' | 'active' | 'trial' | 'passive' | 'expired'
 
@@ -30,15 +21,32 @@ function StatusBadge({ status, is_active }: { status: string; is_active: boolean
 
 export default function SuperadminDashboardPage() {
   const navigate = useNavigate()
-  const [insts] = useState<Institution[]>(DEMO_INSTS)
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [insts, setInsts] = useState<Institution[]>([])
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterType>('all')
   const [expandedId, setExpandedId] = useState<string|null>(null)
-  const [toggleStates, setToggleStates] = useState<Record<string,boolean>>(
-    Object.fromEntries(DEMO_INSTS.map(i => [i.id, i.is_active]))
-  )
 
-  // İstatistikler (gerçek veri üzerinden hesapla)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const list = await superadminApi.institutions()
+        if (!cancelled) setInsts(list)
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Kurum listesi yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
   const stats = {
     total:   insts.length,
     active:  insts.filter(i => i.is_active && i.subscription_status === 'active').length,
@@ -61,8 +69,13 @@ export default function SuperadminDashboardPage() {
     return mq && mf
   })
 
-  const toggleActive = (id: string) => {
-    setToggleStates(p => ({ ...p, [id]: !p[id] }))
+  const toggleActive = async (id: string, current: boolean) => {
+    setInsts(p => p.map(i => i.id===id ? {...i, is_active: !current} : i))
+    try {
+      await superadminApi.toggleActive(id, !current)
+    } catch (e: any) {
+      setInsts(p => p.map(i => i.id===id ? {...i, is_active: current} : i))
+    }
   }
 
   const statCards = [
@@ -71,6 +84,27 @@ export default function SuperadminDashboardPage() {
     { label:'Deneme',         value:stats.trial,    sub:undefined,             color:'border-blue-400',  filter:'trial'   as FilterType },
     { label:'Süresi Doldu',   value:stats.expired,  sub:undefined,             color:'border-red-400',   filter:'expired' as FilterType },
   ]
+
+  if (loading) return (
+    <SuperadminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </SuperadminLayout>
+  )
+
+  if (loadError) return (
+    <SuperadminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </SuperadminLayout>
+  )
 
   return (
     <SuperadminLayout>
@@ -139,7 +173,7 @@ export default function SuperadminDashboardPage() {
             <div>
               {filtered.map(inst => {
                 const isExpanded = expandedId === inst.id
-                const isActive = toggleStates[inst.id] ?? inst.is_active
+                const isActive = inst.is_active
                 const fillPct = inst.student_limit ? Math.round((inst.student_count||0)/inst.student_limit*100) : 0
 
                 return (
@@ -147,7 +181,7 @@ export default function SuperadminDashboardPage() {
                     {/* Ana satır */}
                     <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors">
                       {/* Aktif/Pasif toggle */}
-                      <button onClick={()=>toggleActive(inst.id)}
+                      <button onClick={()=>toggleActive(inst.id, isActive)}
                         className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${isActive?'bg-green-500':'bg-gray-200'}`}>
                         <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isActive?'translate-x-4':'translate-x-0.5'}`}/>
                       </button>
@@ -250,7 +284,7 @@ export default function SuperadminDashboardPage() {
                                 className="w-full py-2 px-3 text-xs font-semibold border border-gray-200 rounded-lg hover:bg-gray-50 text-left transition-colors">
                                 💳 Abonelik Yönetimi
                               </button>
-                              <button onClick={()=>{if(window.confirm(`${inst.name} kurumunu ${isActive?'pasif':'aktif'} yapmak istiyormusnuz?`))toggleActive(inst.id)}}
+                              <button onClick={()=>{if(window.confirm(`${inst.name} kurumunu ${isActive?'pasif':'aktif'} yapmak istiyor musunuz?`))toggleActive(inst.id, isActive)}}
                                 className={`w-full py-2 px-3 text-xs font-semibold border rounded-lg text-left transition-colors ${isActive?'border-red-200 text-red-500 hover:bg-red-50':'border-green-200 text-green-600 hover:bg-green-50'}`}>
                                 {isActive?'⛔ Pasif Yap':'✅ Aktif Et'}
                               </button>

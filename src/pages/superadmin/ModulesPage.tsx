@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { SuperadminLayout } from '@/components/layout/SuperadminLayout'
-import { ALL_MODULES, getInstitutionModules, saveInstitutionModules } from '@/lib/modules'
-import { useToast } from '@/components/ui'
+import { useToast, Alert } from '@/components/ui'
+import { modulesApi, superadminApi } from '@/lib/api'
 
 const CATEGORY_LABELS: Record<string, string> = {
   core: '🏗️ Temel Modüller',
@@ -11,39 +11,90 @@ const CATEGORY_LABELS: Record<string, string> = {
   reporting: '📊 Raporlama Modülleri',
 }
 
-const DEMO_INST_NAME: Record<string, string> = {
-  i1: 'Karacihan Mescidi',
-  i2: 'Fatih Camii',
-  i3: 'Merkez Camii',
-}
-
 export default function ModulesPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { toast } = useToast()
-  const instName = DEMO_INST_NAME[id || ''] || 'Kurum'
-  const [modules, setModules] = useState<Record<string, boolean>>(getInstitutionModules(id || 'default'))
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [instName, setInstName] = useState('Kurum')
+  const [allModules, setAllModules] = useState<any[]>([])
+  const [modules, setModules] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
 
+  useEffect(() => {
+    if (!id) return
+    const institutionId = id
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const [inst, catalog, current] = await Promise.all([
+          superadminApi.institution(institutionId),
+          modulesApi.allModules(),
+          modulesApi.institutionModules(institutionId),
+        ])
+        if (cancelled) return
+        setInstName(inst.name)
+        setAllModules(catalog)
+        setModules(current)
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Modüller yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [id])
+
   const toggle = (moduleId: string) => {
-    // core modüller kapatılamaz
-    const mod = ALL_MODULES.find(m => m.id === moduleId)
+    const mod = allModules.find(m => m.id === moduleId)
     if (mod?.category === 'core') { toast('Temel modüller kapatılamaz', 'error'); return }
     setModules(p => ({ ...p, [moduleId]: !p[moduleId] }))
   }
 
   const save = async () => {
+    if (!id) return
     setSaving(true)
-    saveInstitutionModules(id || 'default', modules)
-    await new Promise(r => setTimeout(r, 400))
-    setSaving(false)
-    toast('Modüller kaydedildi ✅', 'success')
+    try {
+      const updates = allModules.map(m => ({ module_id: m.id, is_active: modules[m.id] !== false }))
+      await modulesApi.updateInstitutionModules(id, updates)
+      toast('Modüller kaydedildi ✅', 'success')
+    } catch (e: any) {
+      toast(e.message || 'Kaydetme başarısız oldu', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const enableAll = () => setModules(Object.fromEntries(ALL_MODULES.map(m => [m.id, true])))
-  const resetDefaults = () => setModules(Object.fromEntries(ALL_MODULES.map(m => [m.id, m.default])))
+  const enableAll = () => setModules(Object.fromEntries(allModules.map(m => [m.id, true])))
+  const resetDefaults = () => setModules(Object.fromEntries(allModules.map(m => [m.id, m.is_default])))
 
   const categories = ['core', 'advanced', 'communication', 'reporting'] as const
+
+  if (loading) return (
+    <SuperadminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </SuperadminLayout>
+  )
+
+  if (loadError) return (
+    <SuperadminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </SuperadminLayout>
+  )
 
   return (
     <SuperadminLayout>
@@ -61,7 +112,7 @@ export default function ModulesPage() {
         <div>
           <div className="text-lg font-extrabold text-gray-900">{instName}</div>
           <div className="text-sm text-gray-400 mt-0.5">
-            {Object.values(modules).filter(Boolean).length} / {ALL_MODULES.length} modül aktif
+            {Object.values(modules).filter(Boolean).length} / {allModules.length} modül aktif
           </div>
         </div>
         <div className="flex gap-2">
@@ -83,7 +134,8 @@ export default function ModulesPage() {
       {/* Modüller */}
       <div className="space-y-5">
         {categories.map(cat => {
-          const catModules = ALL_MODULES.filter(m => m.category === cat)
+          const catModules = allModules.filter(m => m.category === cat)
+          if (catModules.length === 0) return null
           return (
             <div key={cat}>
               <div className="text-sm font-bold text-gray-700 mb-2">{CATEGORY_LABELS[cat]}</div>

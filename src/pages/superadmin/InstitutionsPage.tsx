@@ -1,18 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SuperadminLayout } from '@/components/layout/SuperadminLayout'
+import { Alert } from '@/components/ui'
 import type { Institution } from '@/types'
-
-const DEMO_INSTS: Institution[] = [
-  { id:'i1', slug:'karacihan',   name:'Karacihan Mescidi',   city:'Konya', district:'Karatay',  responsible_name:'Ahmet Yıldız',  responsible_phone:'05321111111', is_active:true,  subscription_status:'active',    subscription_expires_at:'2027-01-01', student_limit:150, created_at:'2025-09-01', student_count:47, teacher_count:3 },
-  { id:'i2', slug:'fatih',       name:'Fatih Camii',         city:'Konya', district:'Selçuklu', responsible_name:'Mehmet Kaya',   responsible_phone:'05322222222', is_active:true,  subscription_status:'trial',     trial_ends_at:'2026-07-01',           student_limit:100, created_at:'2026-04-01', student_count:23, teacher_count:2 },
-  { id:'i3', slug:'merkez',      name:'Merkez Camii',        city:'Konya', district:'Meram',    responsible_name:'Ali Demir',     responsible_phone:'05323333333', is_active:false, subscription_status:'expired',                                         student_limit:200, created_at:'2025-01-01', student_count:0,  teacher_count:0 },
-  { id:'i4', slug:'yenimahalle', name:'Yenimahalle Mescidi', city:'Konya', district:'Karatay',  responsible_name:'Fatma Öz',      responsible_phone:'05324444444', is_active:true,  subscription_status:'active',    subscription_expires_at:'2027-01-01', student_limit:80,  created_at:'2025-09-01', student_count:31, teacher_count:2 },
-  { id:'i5', slug:'havzan',      name:'Havzan Camii',        city:'Konya', district:'Selçuklu', responsible_name:'Hasan Çelik',   responsible_phone:'05325555555', is_active:true,  subscription_status:'trial',     trial_ends_at:'2026-06-30',           student_limit:100, created_at:'2026-05-01', student_count:18, teacher_count:1 },
-  { id:'i6', slug:'selimiye',    name:'Selimiye Camii',      city:'Konya', district:'Selçuklu', responsible_name:'Mustafa Şahin', responsible_phone:'05326666666', is_active:true,  subscription_status:'active',    subscription_expires_at:'2027-06-01', student_limit:120, created_at:'2025-09-01', student_count:62, teacher_count:4 },
-  { id:'i7', slug:'alaaddin',    name:'Alaaddin Camii',      city:'Konya', district:'Karatay',  responsible_name:'İbrahim Koç',   responsible_phone:'05327777777', is_active:true,  subscription_status:'active',    subscription_expires_at:'2027-01-01', student_limit:90,  created_at:'2025-09-01', student_count:38, teacher_count:2 },
-  { id:'i8', slug:'iplikci',     name:'İplikçi Camii',       city:'Konya', district:'Karatay',  responsible_name:'Ramazan Aydın', responsible_phone:'05328888888', is_active:false, subscription_status:'cancelled',                                       student_limit:60,  created_at:'2024-06-01', student_count:0,  teacher_count:0 },
-]
+import { superadminApi } from '@/lib/api'
 
 function Badge({ status, is_active }: { status: string; is_active: boolean }) {
   if (!is_active) return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-500">⛔ Pasif</span>
@@ -28,10 +19,31 @@ function Badge({ status, is_active }: { status: string; is_active: boolean }) {
 
 export default function InstitutionsPage() {
   const navigate = useNavigate()
-  const [insts, setInsts] = useState(DEMO_INSTS)
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [insts, setInsts] = useState<Institution[]>([])
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [sort, setSort] = useState<'name'|'students'|'created'>('name')
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const list = await superadminApi.institutions()
+        if (!cancelled) setInsts(list)
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Kurum listesi yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
   const filtered = insts
     .filter(i => {
@@ -42,9 +54,36 @@ export default function InstitutionsPage() {
     })
     .sort((a,b) => sort==='students'?(b.student_count||0)-(a.student_count||0):sort==='created'?b.created_at.localeCompare(a.created_at):a.name.localeCompare(b.name))
 
-  const toggleActive = (id: string) => {
-    setInsts(p => p.map(i => i.id===id ? {...i, is_active:!i.is_active} : i))
+  const toggleActive = async (id: string, current: boolean) => {
+    // Önce ekranda anında yansıt, başarısız olursa geri al — kullanıcı beklemesin
+    setInsts(p => p.map(i => i.id===id ? {...i, is_active: !current} : i))
+    try {
+      await superadminApi.toggleActive(id, !current)
+    } catch (e: any) {
+      setInsts(p => p.map(i => i.id===id ? {...i, is_active: current} : i))
+    }
   }
+
+  if (loading) return (
+    <SuperadminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </SuperadminLayout>
+  )
+
+  if (loadError) return (
+    <SuperadminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </SuperadminLayout>
+  )
 
   return (
     <SuperadminLayout>
@@ -119,7 +158,7 @@ export default function InstitutionsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button onClick={()=>toggleActive(i.id)}
+                          <button onClick={()=>toggleActive(i.id, i.is_active)}
                             className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${i.is_active?'bg-green-500':'bg-gray-200'}`}>
                             <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${i.is_active?'translate-x-4':'translate-x-0.5'}`}/>
                           </button>

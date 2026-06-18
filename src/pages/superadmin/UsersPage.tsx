@@ -1,54 +1,102 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SuperadminLayout } from '@/components/layout/SuperadminLayout'
-import { Button, Modal, useToast } from '@/components/ui'
-
-interface User {
-  id: string; name: string; phone: string; role: 'institution_admin'|'teacher'
-  institution: string; institution_slug: string; is_active: boolean; last_login?: string; created_at: string
-}
-
-const DEMO_USERS: User[] = [
-  { id:'u1', name:'Ahmet Yıldız',  phone:'05321111111', role:'institution_admin', institution:'Karacihan Mescidi',   institution_slug:'karacihan',   is_active:true,  last_login:'2026-06-16', created_at:'2025-09-01' },
-  { id:'u2', name:'Fatma Öğretmen',phone:'05329999991', role:'teacher',           institution:'Karacihan Mescidi',   institution_slug:'karacihan',   is_active:true,  last_login:'2026-06-16', created_at:'2025-09-05' },
-  { id:'u3', name:'Mehmet Kaya',   phone:'05322222222', role:'institution_admin', institution:'Fatih Camii',         institution_slug:'fatih',       is_active:true,  last_login:'2026-06-15', created_at:'2026-04-01' },
-  { id:'u4', name:'Ali Demir',     phone:'05323333333', role:'institution_admin', institution:'Merkez Camii',        institution_slug:'merkez',      is_active:false, last_login:'2026-01-10', created_at:'2025-01-01' },
-  { id:'u5', name:'Fatma Öz',      phone:'05324444444', role:'institution_admin', institution:'Yenimahalle Mescidi', institution_slug:'yenimahalle', is_active:true,  last_login:'2026-06-14', created_at:'2025-09-01' },
-  { id:'u6', name:'Hasan Çelik',   phone:'05325555555', role:'institution_admin', institution:'Havzan Camii',        institution_slug:'havzan',      is_active:true,  last_login:'2026-06-16', created_at:'2026-05-01' },
-  { id:'u7', name:'Ayşe Öğretmen', phone:'05329999992', role:'teacher',           institution:'Fatih Camii',         institution_slug:'fatih',       is_active:true,  last_login:'2026-06-15', created_at:'2026-04-05' },
-  { id:'u8', name:'Mustafa Şahin', phone:'05326666666', role:'institution_admin', institution:'Selimiye Camii',      institution_slug:'selimiye',    is_active:true,  last_login:'2026-06-13', created_at:'2025-09-01' },
-]
+import { Button, Modal, useToast, Alert } from '@/components/ui'
+import { usersApi } from '@/lib/api'
 
 export default function UsersPage() {
   const { toast } = useToast()
-  const [users, setUsers] = useState<User[]>(DEMO_USERS)
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [users, setUsers] = useState<any[]>([])
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<'all'|'institution_admin'|'teacher'>('all')
-  const [resetModal, setResetModal] = useState<{open:boolean;user:User|null}>({open:false,user:null})
+  const [resetModal, setResetModal] = useState<{open:boolean;user:any|null}>({open:false,user:null})
   const [newPw, setNewPw] = useState('')
+  const [processing, setProcessing] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const list = await usersApi.list()
+        if (!cancelled) setUsers(list)
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Kullanıcılar yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase()
-    const mq = !q || u.name.toLowerCase().includes(q) || u.phone.includes(q) || u.institution.toLowerCase().includes(q)
+    const mq = !q || u.full_name.toLowerCase().includes(q) || u.phone.includes(q) || (u.institution||'').toLowerCase().includes(q)
     const mr = roleFilter==='all' || u.role===roleFilter
     return mq && mr
   })
 
-  const toggleActive = (id: string) => {
-    setUsers(p => p.map(u => u.id===id ? {...u, is_active:!u.is_active} : u))
-    toast('Kullanıcı durumu güncellendi','success')
+  const toggleActive = async (id: string, current: boolean) => {
+    setUsers(p => p.map(u => u.id===id ? {...u, is_active:!current} : u))
+    try {
+      await usersApi.toggleActive(id, !current)
+      toast('Kullanıcı durumu güncellendi','success')
+    } catch (e: any) {
+      setUsers(p => p.map(u => u.id===id ? {...u, is_active:current} : u))
+      toast(e.message || 'İşlem başarısız oldu', 'error')
+    }
   }
 
-  const resetPassword = () => {
+  const resetPassword = async () => {
     if (!newPw || newPw.length < 4) { toast('En az 4 karakter girin','error'); return }
-    toast(`${resetModal.user?.name} şifresi sıfırlandı ✅`, 'success')
-    setResetModal({open:false, user:null}); setNewPw('')
+    if (!resetModal.user) return
+    setProcessing(true)
+    try {
+      await usersApi.resetPassword(resetModal.user.id, newPw)
+      toast(`${resetModal.user.full_name} şifresi sıfırlandı ✅`, 'success')
+      setResetModal({open:false, user:null}); setNewPw('')
+    } catch (e: any) {
+      toast(e.message || 'Şifre sıfırlama başarısız oldu', 'error')
+    } finally {
+      setProcessing(false)
+    }
   }
 
-  const deleteUser = (id: string, name: string) => {
+  const deleteUser = async (id: string, name: string) => {
     if (!confirm(`${name} kullanıcısını silmek istiyor musunuz?`)) return
-    setUsers(p => p.filter(u => u.id!==id))
-    toast('Kullanıcı silindi', 'info')
+    try {
+      await usersApi.delete(id)
+      setUsers(p => p.filter(u => u.id!==id))
+      toast('Kullanıcı silindi', 'info')
+    } catch (e: any) {
+      toast(e.message || 'Silme işlemi başarısız oldu', 'error')
+    }
   }
+
+  if (loading) return (
+    <SuperadminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </SuperadminLayout>
+  )
+
+  if (loadError) return (
+    <SuperadminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </SuperadminLayout>
+  )
 
   return (
     <SuperadminLayout>
@@ -103,9 +151,9 @@ export default function UsersPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${u.role==='institution_admin'?'bg-green-100 text-green-700':'bg-blue-100 text-blue-700'}`}>
-                          {u.name.charAt(0)}
+                          {u.full_name.charAt(0)}
                         </div>
-                        <span className="font-semibold text-gray-900">{u.name}</span>
+                        <span className="font-semibold text-gray-900">{u.full_name}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-500 font-mono text-xs">{u.phone}</td>
@@ -118,9 +166,9 @@ export default function UsersPage() {
                         {u.role==='institution_admin'?'👤 Yönetici':'👨‍🏫 Öğretmen'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{u.last_login||'—'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{u.last_login_at?.split('T')[0]||'—'}</td>
                     <td className="px-4 py-3">
-                      <button onClick={()=>toggleActive(u.id)}
+                      <button onClick={()=>toggleActive(u.id, u.is_active)}
                         className={`relative w-9 h-5 rounded-full transition-colors ${u.is_active?'bg-green-500':'bg-gray-200'}`}>
                         <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${u.is_active?'translate-x-4':'translate-x-0.5'}`}/>
                       </button>
@@ -131,7 +179,7 @@ export default function UsersPage() {
                           className="px-2.5 py-1.5 border border-amber-200 text-amber-600 text-xs font-semibold rounded-lg hover:bg-amber-50">
                           🔑 Şifre
                         </button>
-                        <button onClick={()=>deleteUser(u.id,u.name)}
+                        <button onClick={()=>deleteUser(u.id,u.full_name)}
                           className="px-2.5 py-1.5 border border-red-200 text-red-500 text-xs font-semibold rounded-lg hover:bg-red-50">
                           🗑️
                         </button>
@@ -148,8 +196,8 @@ export default function UsersPage() {
         </div>
       </div>
 
-      <Modal open={resetModal.open} onClose={()=>setResetModal({open:false,user:null})} title={`🔑 Şifre Sıfırla — ${resetModal.user?.name}`}
-        footer={<><Button variant="outline" onClick={()=>setResetModal({open:false,user:null})}>İptal</Button><Button onClick={resetPassword}>Kaydet</Button></>}>
+      <Modal open={resetModal.open} onClose={()=>setResetModal({open:false,user:null})} title={`🔑 Şifre Sıfırla — ${resetModal.user?.full_name}`}
+        footer={<><Button variant="outline" onClick={()=>setResetModal({open:false,user:null})}>İptal</Button><Button onClick={resetPassword} loading={processing}>Kaydet</Button></>}>
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Yeni Şifre</label>
           <input type="text" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="Yeni şifre girin"

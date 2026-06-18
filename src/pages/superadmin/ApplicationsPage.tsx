@@ -1,55 +1,54 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SuperadminLayout } from '@/components/layout/SuperadminLayout'
-import { Button, Modal, useToast } from '@/components/ui'
+import { Button, Modal, useToast, Alert } from '@/components/ui'
 import { waLink } from '@/lib/utils'
+import { applicationsApi } from '@/lib/api'
 
-interface Application {
-  id: string; name: string; city: string; district: string
-  responsible_name: string; responsible_phone: string; email?: string
-  student_estimate?: string; note?: string
-  status: 'pending' | 'approved' | 'rejected'
-  created_at: string
-}
-
-const DEMO_APPS: Application[] = [
-  { id:'a1', name:'Saraçoğlu Camii',   city:'Konya', district:'Karatay',  responsible_name:'Ömer Sarı',    responsible_phone:'05331234567', student_estimate:'31-60 öğrenci',   status:'pending',  created_at:'2026-06-15' },
-  { id:'a2', name:'Dedeman Mescidi',   city:'Konya', district:'Meram',    responsible_name:'Veli Kılıç',   responsible_phone:'05332345678', student_estimate:'1-30 öğrenci',    status:'pending',  created_at:'2026-06-14' },
-  { id:'a3', name:'Beşyüzevler Camii', city:'Konya', district:'Selçuklu', responsible_name:'Hakkı Acar',   responsible_phone:'05333456789', student_estimate:'61-100 öğrenci', status:'approved', created_at:'2026-06-10' },
-  { id:'a4', name:'Yazır Camii',       city:'Konya', district:'Selçuklu', responsible_name:'Cemil Yılmaz', responsible_phone:'05334567890', note:'Çok geniş katılım bekliyoruz', status:'rejected', created_at:'2026-06-08' },
-]
-
-// Kurum adından otomatik slug üret — Türkçe karakterleri sadeleştirir
+// Kurum adından otomatik slug üret — backend'deki generate_slug_from_name() ile aynı mantık,
+// kullanıcıya anlık önizleme göstermek için burada da tekrarlanıyor (asıl üretim backend'de).
 function autoSlug(name: string) {
   return name.toLowerCase()
     .replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ş/g,'s').replace(/ı/g,'i').replace(/ö/g,'o').replace(/ç/g,'c')
     .replace(/[^a-z0-9]/g,'').slice(0, 20)
 }
 
-// Şu an kullanılan slug'lar — gerçek sistemde institutions tablosundan çekilir.
-// Çakışma kontrolü için burada tutuyoruz.
-const EXISTING_SLUGS = ['karacihan', 'fatih', 'merkez', 'yenimahalle', 'havzan', 'selimiye', 'alaaddin', 'iplikci']
-
 export default function ApplicationsPage() {
   const { toast } = useToast()
-  const [apps, setApps] = useState<Application[]>(DEMO_APPS)
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [apps, setApps] = useState<any[]>([])
   const [filter, setFilter] = useState<'all'|'pending'|'approved'|'rejected'>('all')
-  const [detail, setDetail] = useState<Application|null>(null)
+  const [detail, setDetail] = useState<any|null>(null)
   const [rejectReason, setRejectReason] = useState('')
-  const [rejectModal, setRejectModal] = useState<Application|null>(null)
-  const [approveModal, setApproveModal] = useState<Application|null>(null)
+  const [rejectModal, setRejectModal] = useState<any|null>(null)
+  const [approveModal, setApproveModal] = useState<any|null>(null)
   const [slugInput, setSlugInput] = useState('')
   const [slugError, setSlugError] = useState('')
+  const [processing, setProcessing] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const list = await applicationsApi.list()
+        if (!cancelled) setApps(list)
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Başvurular yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
   const pending = apps.filter(a=>a.status==='pending').length
   const filtered = apps.filter(a => filter==='all'||a.status===filter)
 
-  const genTempPassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    return Array.from({length:8},()=>chars[Math.floor(Math.random()*chars.length)]).join('')
-  }
-
-  // "Onayla" tıklanınca direkt göndermez — önce slug'ı göster/düzenlemeye izin ver
-  const openApproveModal = (app: Application) => {
+  const openApproveModal = (app: any) => {
     setSlugInput(autoSlug(app.name))
     setSlugError('')
     setApproveModal(app)
@@ -59,31 +58,44 @@ export default function ApplicationsPage() {
     if (!value.trim()) return 'Slug boş olamaz'
     if (value.length < 3) return 'Slug en az 3 karakter olmalı'
     if (!/^[a-z0-9]+$/.test(value)) return 'Sadece küçük harf ve sayı kullanılabilir'
-    if (EXISTING_SLUGS.includes(value)) return 'Bu slug zaten kullanılıyor — başka bir tane girin'
     return ''
   }
 
-  const confirmApprove = () => {
+  const confirmApprove = async () => {
     if (!approveModal) return
     const err = validateSlug(slugInput)
     if (err) { setSlugError(err); return }
 
-    const app = approveModal
-    const tempPw = genTempPassword()
-    const msg = `Sayın ${app.responsible_name} 👋\n\n${app.name} için Mesyo Soft başvurunuz onaylandı! 🎉\n\n📱 Giriş bilgileriniz:\n🔗 Panel: ${slugInput}.mesyosoft.com.tr\n📞 Kullanıcı: ${app.responsible_phone}\n🔑 Geçici Şifre: ${tempPw}\n\nİlk girişte şifrenizi değiştirmenizi öneriyoruz.\n\nHoş geldiniz! Mesyo Soft`
-    setApps(p=>p.map(a=>a.id===app.id?{...a,status:'approved'}:a))
-    window.open(waLink(app.responsible_phone, msg), '_blank')
-    setApproveModal(null)
-    setDetail(null)
-    toast(`${app.name} onaylandı — ${slugInput}.mesyosoft.com.tr aktif, WA şifre gönderildi ✅`, 'success')
+    setProcessing(true)
+    try {
+      const { temp_password } = await applicationsApi.approve(approveModal.id, slugInput)
+      const msg = `Sayın ${approveModal.responsible_name} 👋\n\n${approveModal.name} için Mesyo Soft başvurunuz onaylandı! 🎉\n\n📱 Giriş bilgileriniz:\n🔗 Panel: ${slugInput}.mesyosoft.com.tr\n📞 Kullanıcı: ${approveModal.responsible_phone}\n🔑 Geçici Şifre: ${temp_password}\n\nİlk girişte şifrenizi değiştirmenizi öneriyoruz.\n\nHoş geldiniz! Mesyo Soft`
+      setApps(p=>p.map(a=>a.id===approveModal.id?{...a,status:'approved',final_slug:slugInput}:a))
+      window.open(waLink(approveModal.responsible_phone, msg), '_blank')
+      setApproveModal(null)
+      setDetail(null)
+      toast(`${approveModal.name} onaylandı — ${slugInput}.mesyosoft.com.tr aktif, WA şifre gönderildi ✅`, 'success')
+    } catch (e: any) {
+      setSlugError(e.message || 'Onaylama başarısız oldu')
+    } finally {
+      setProcessing(false)
+    }
   }
 
-  const reject = (app: Application) => {
-    const msg = `Sayın ${app.responsible_name} 👋\n\n${app.name} için yaptığınız Mesyo Soft başvurusu değerlendirilmiş olup${rejectReason?` maalesef kabul edilememiştir.\n\nNeden: ${rejectReason}`:'maalesef kabul edilememiştir.'}\n\nAnlayışınız için teşekkür ederiz 🌿\nMesyo Soft`
-    setApps(p=>p.map(a=>a.id===app.id?{...a,status:'rejected'}:a))
-    window.open(waLink(app.responsible_phone, msg), '_blank')
-    setRejectModal(null); setRejectReason('')
-    toast('Başvuru reddedildi — WA bildirim gönderildi', 'info')
+  const reject = async (app: any) => {
+    setProcessing(true)
+    try {
+      await applicationsApi.reject(app.id, rejectReason || undefined)
+      const msg = `Sayın ${app.responsible_name} 👋\n\n${app.name} için yaptığınız Mesyo Soft başvurusu değerlendirilmiş olup${rejectReason?` maalesef kabul edilememiştir.\n\nNeden: ${rejectReason}`:'maalesef kabul edilememiştir.'}\n\nAnlayışınız için teşekkür ederiz 🌿\nMesyo Soft`
+      setApps(p=>p.map(a=>a.id===app.id?{...a,status:'rejected',rejection_reason:rejectReason}:a))
+      window.open(waLink(app.responsible_phone, msg), '_blank')
+      setRejectModal(null); setRejectReason('')
+      toast('Başvuru reddedildi — WA bildirim gönderildi', 'info')
+    } catch (e: any) {
+      toast(e.message || 'Reddetme işlemi başarısız oldu', 'error')
+    } finally {
+      setProcessing(false)
+    }
   }
 
   const StatusBadge = ({status}:{status:string}) => {
@@ -95,6 +107,27 @@ export default function ApplicationsPage() {
     const [cls,label]=m[status]||['bg-gray-100 text-gray-500',status]
     return <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${cls}`}>{label}</span>
   }
+
+  if (loading) return (
+    <SuperadminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </SuperadminLayout>
+  )
+
+  if (loadError) return (
+    <SuperadminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </SuperadminLayout>
+  )
 
   return (
     <SuperadminLayout>
@@ -140,12 +173,12 @@ export default function ApplicationsPage() {
                     <StatusBadge status={app.status}/>
                   </div>
                   <div className="text-xs text-gray-500">{app.city} / {app.district} • {app.responsible_name} • {app.responsible_phone}</div>
-                  {app.student_estimate && <div className="text-xs text-gray-400 mt-0.5">Tahmini: {app.student_estimate}</div>}
+                  {app.student_count_estimate && <div className="text-xs text-gray-400 mt-0.5">Tahmini: {app.student_count_estimate}</div>}
                   {app.status==='pending' && (
                     <div className="text-xs text-gray-400 mt-0.5 font-mono">Önerilen adres: {autoSlug(app.name)}.mesyosoft.com.tr</div>
                   )}
                   {app.note && <div className="text-xs text-gray-400 italic mt-0.5">"{app.note}"</div>}
-                  <div className="text-[10px] text-gray-300 mt-1">{app.created_at}</div>
+                  <div className="text-[10px] text-gray-300 mt-1">{app.created_at?.split('T')[0]}</div>
                 </div>
                 <div className="flex gap-2 flex-wrap flex-shrink-0">
                   <button onClick={()=>setDetail(app)}
@@ -162,15 +195,6 @@ export default function ApplicationsPage() {
                       ❌ Reddet
                     </button>
                   </>}
-                  {app.status==='approved' && (
-                    <button onClick={()=>{
-                      const tempPw=genTempPassword()
-                      const msg=`Sayın ${app.responsible_name} 👋\n\nMesyo Soft şifreniz sıfırlandı.\n🔑 Yeni Geçici Şifre: ${tempPw}\n\nMesyo Soft`
-                      window.open(waLink(app.responsible_phone,msg),'_blank')
-                    }} className="px-3 py-1.5 border border-amber-200 text-amber-600 text-xs font-semibold rounded-lg hover:bg-amber-50">
-                      🔑 Şifre Yolla
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -191,9 +215,9 @@ export default function ApplicationsPage() {
           <div className="space-y-2">
             {[
               ['Kurum Adı',detail.name],['Şehir/İlçe',`${detail.city} / ${detail.district}`],
-              ['Adres',detail.responsible_phone],['Sorumlu',detail.responsible_name],
+              ['Adres',detail.address || '—'],['Sorumlu',detail.responsible_name],
               ['Telefon',detail.responsible_phone],['E-posta',detail.email||'—'],
-              ['Tahmini Öğrenci',detail.student_estimate||'—'],['Başvuru',detail.created_at],
+              ['Tahmini Öğrenci',detail.student_count_estimate||'—'],['Başvuru',detail.created_at?.split('T')[0]],
             ].map(([l,v])=>(
               <div key={l} className="flex gap-3 text-sm py-1.5 border-b border-gray-50 last:border-0">
                 <span className="text-xs font-semibold text-gray-400 w-28 flex-shrink-0 pt-0.5">{l}</span>
@@ -208,7 +232,7 @@ export default function ApplicationsPage() {
       {/* Onay Modal — Slug Düzenlenebilir */}
       {approveModal && (
         <Modal open={!!approveModal} onClose={()=>setApproveModal(null)} title={`✅ Onayla — ${approveModal.name}`}
-          footer={<><Button variant="outline" onClick={()=>setApproveModal(null)}>İptal</Button><Button onClick={confirmApprove}>✅ Onayla + WA Şifre Gönder</Button></>}>
+          footer={<><Button variant="outline" onClick={()=>setApproveModal(null)}>İptal</Button><Button onClick={confirmApprove} loading={processing}>✅ Onayla + WA Şifre Gönder</Button></>}>
           <div className="space-y-3">
             <p className="text-sm text-gray-600">
               Kurum adından otomatik bir adres önerildi. İsterseniz değiştirebilirsiniz — kurum bu adresten panele erişecek.
@@ -227,7 +251,7 @@ export default function ApplicationsPage() {
               </div>
               {slugError && <p className="text-xs text-red-500 mt-1">{slugError}</p>}
               {!slugError && slugInput && (
-                <p className="text-xs text-green-600 mt-1">✓ {slugInput}.mesyosoft.com.tr kullanılabilir</p>
+                <p className="text-xs text-green-600 mt-1">✓ {slugInput}.mesyosoft.com.tr</p>
               )}
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-700">
@@ -242,7 +266,7 @@ export default function ApplicationsPage() {
         <Modal open={!!rejectModal} onClose={()=>setRejectModal(null)} title={`❌ Reddet — ${rejectModal.name}`}
           footer={<>
             <Button variant="outline" onClick={()=>setRejectModal(null)}>İptal</Button>
-            <Button variant="danger" onClick={()=>reject(rejectModal)}>Reddet + WA Bildir</Button>
+            <Button variant="danger" onClick={()=>reject(rejectModal)} loading={processing}>Reddet + WA Bildir</Button>
           </>}>
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Ret Nedeni (opsiyonel)</label>
