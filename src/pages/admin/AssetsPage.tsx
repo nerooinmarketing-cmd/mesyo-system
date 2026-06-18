@@ -1,53 +1,14 @@
-import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
-import { Button, Modal, useToast } from '@/components/ui'
+import { Button, Modal, useToast, Alert } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { assetsApi } from '@/lib/api'
 import * as XLSX from 'xlsx'
 
-// ─── TİPLER ──────────────────────────────────────────────────────────────────
 type Category = 'bina'|'dini'|'kurs'|'buro'|'temizlik'|'guvenlik'|'mutfak'|'diger'
 type Condition = 'iyi'|'bakim'|'arizali'|'kullanimiyor'
 type Tab = 'liste'|'ekle'|'arizalar'|'rapor'
 
-interface Asset {
-  id: string
-  code: string          // DMB-001 gibi
-  name: string
-  category: Category
-  condition: Condition
-  quantity: number
-  unit: string          // adet, takım, metre vb.
-  location: string      // nerede: ana salon, sınıf 1, depo...
-  purchase_date?: string
-  purchase_price?: number
-  supplier?: string
-  last_maintenance?: string
-  next_maintenance?: string
-  serial_no?: string
-  note?: string
-  image?: string
-  created_at: string
-}
-
-interface FaultReport {
-  id: string; asset_id: string; asset_code: string; asset_name: string
-  type: 'ariza'|'bakim'|'kayip'|'hasar'
-  description: string; reporter: string
-  reported_at: string  // ISO
-  status: 'bekliyor'|'goruldu'|'serviste'|'tamamlandi'
-  service_note?: string; resolved_at?: string
-}
-
-interface MaintenanceLog {
-  asset_id: string
-  date: string
-  type: 'bakim'|'tamir'|'degisim'
-  note: string
-  cost?: number
-}
-
-// ─── CONFIG ──────────────────────────────────────────────────────────────────
 const CAT_CONFIG: Record<Category,{label:string;icon:string;color:string}> = {
   bina:      {label:'Bina & Altyapı',    icon:'🏗️', color:'bg-stone-100 text-stone-700'},
   dini:      {label:'Dini Eşyalar',      icon:'🕌', color:'bg-green-100 text-green-700'},
@@ -69,35 +30,12 @@ const COND_CONFIG: Record<Condition,{label:string;color:string;dot:string}> = {
 const LOCATIONS = ['Ana Salon','Kadınlar Bölümü','Sınıf 1','Sınıf 2','Depo','Abdesthane','Bahçe','Ofis','Kütüphane','Mutfak']
 const UNITS = ['Adet','Takım','Metre','Set','Paket','Çift']
 
-// ─── DEMO VERİ ────────────────────────────────────────────────────────────────
-const DEMO_ASSETS: Asset[] = [
-  {id:'a1',  code:'DMB-001', name:'Halı (Ana Salon)',     category:'bina',      condition:'iyi',      quantity:1,  unit:'Set',  location:'Ana Salon',       purchase_date:'2023-09-01', purchase_price:8500,  supplier:'Konya Halıcılık',  last_maintenance:'2025-05-01', next_maintenance:'2026-05-01', created_at:'2023-09-01'},
-  {id:'a2',  code:'DMB-002', name:'Ses Sistemi',          category:'dini',      condition:'iyi',      quantity:1,  unit:'Set',  location:'Ana Salon',       purchase_date:'2022-06-15', purchase_price:4200,  supplier:'İkitaş Elektronik',                                  created_at:'2022-06-15'},
-  {id:'a3',  code:'DMB-003', name:'Kuran-ı Kerim',        category:'dini',      condition:'iyi',      quantity:45, unit:'Adet', location:'Kütüphane',       purchase_date:'2024-01-10', purchase_price:2250,                                                                 created_at:'2024-01-10'},
-  {id:'a4',  code:'DMB-004', name:'Klima (Split)',        category:'bina',      condition:'bakim',    quantity:3,  unit:'Adet', location:'Ana Salon',       purchase_date:'2021-07-01', purchase_price:12000,                                next_maintenance:'2026-07-01', created_at:'2021-07-01', note:'Filtre değişimi gerekiyor'},
-  {id:'a5',  code:'DMB-005', name:'Öğrenci Sırası',      category:'kurs',      condition:'iyi',      quantity:20, unit:'Adet', location:'Sınıf 1',         purchase_date:'2024-09-01', purchase_price:6000,                                                                 created_at:'2024-09-01'},
-  {id:'a6',  code:'DMB-006', name:'Projeksiyon',          category:'kurs',      condition:'arizali',  quantity:1,  unit:'Adet', location:'Sınıf 1',         purchase_date:'2022-09-01', purchase_price:3500,                                                                 created_at:'2022-09-01', note:'Lamba arızalı, değişim gerekiyor'},
-  {id:'a7',  code:'DMB-007', name:'Bilgisayar',           category:'buro',      condition:'iyi',      quantity:1,  unit:'Adet', location:'Ofis',             purchase_date:'2023-03-15', purchase_price:9800,  serial_no:'SN-A1234567',                                        created_at:'2023-03-15'},
-  {id:'a8',  code:'DMB-008', name:'Elektrikli Süpürge',   category:'temizlik',  condition:'iyi',      quantity:2,  unit:'Adet', location:'Depo',                                                                                                                              created_at:'2024-01-01'},
-  {id:'a9',  code:'DMB-009', name:'Yangın Söndürücü',     category:'guvenlik',  condition:'bakim',    quantity:4,  unit:'Adet', location:'Ana Salon',       purchase_date:'2022-01-01',                                       next_maintenance:'2026-01-01',                 created_at:'2022-01-01', note:'Dolum tarihi yaklaşıyor'},
-  {id:'a10', code:'DMB-010', name:'Çay Kazanı',           category:'mutfak',    condition:'iyi',      quantity:1,  unit:'Adet', location:'Mutfak',          purchase_date:'2023-06-01', purchase_price:850,                                                                  created_at:'2023-06-01'},
-  {id:'a11', code:'DMB-011', name:'Kameralar (Güvenlik)', category:'guvenlik',  condition:'iyi',      quantity:4,  unit:'Adet', location:'Çeşitli',         purchase_date:'2024-02-01', purchase_price:5600,  serial_no:'CAM-SYS-001',                                        created_at:'2024-02-01'},
-  {id:'a12', code:'DMB-012', name:'Yazı Tahtası',         category:'kurs',      condition:'iyi',      quantity:2,  unit:'Adet', location:'Sınıf 1',         purchase_date:'2024-09-01', purchase_price:1200,                                                                 created_at:'2024-09-01'},
-]
-
-const DEMO_LOGS: MaintenanceLog[] = [
-  {asset_id:'a1', date:'2025-05-01', type:'bakim',    note:'Yıllık halı yıkama yapıldı',          cost:600},
-  {asset_id:'a4', date:'2025-03-15', type:'bakim',    note:'Klima bakımı, gaz kontrolü yapıldı',  cost:750},
-  {asset_id:'a6', date:'2025-06-01', type:'tamir',    note:'Projeksiyon lambası arızası tespit edildi — siparişte', cost:0},
-  {asset_id:'a9', date:'2024-01-15', type:'degisim',  note:'Yangın söndürücü dolumu yapıldı',     cost:320},
-]
-
 function QRCode({ value, size=200 }: { value: string; size?: number }) {
   const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}&bgcolor=ffffff&color=1B4332&margin=10`
   return <img src={url} alt="QR Kod" className="block" style={{width:size,height:size}}/>
 }
 
-function AssetQRModal({ asset, onClose }: { asset: Asset; onClose: () => void }) {
+function AssetQRModal({ asset, onClose }: { asset: any; onClose: () => void }) {
   const qrUrl = `${window.location.origin}/demirbase/${asset.code}`
   const printUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrUrl)}&bgcolor=ffffff&color=1B4332&margin=15`
   const { toast } = useToast()
@@ -108,14 +46,11 @@ function AssetQRModal({ asset, onClose }: { asset: Asset; onClose: () => void })
         <div className="inline-block p-4 bg-white border-4 border-[#1B4332] rounded-2xl shadow-lg">
           <QRCode value={qrUrl} size={200}/>
         </div>
-
         <div>
           <div className="text-xs font-bold text-gray-500 mb-1">{asset.code}</div>
           <div className="font-bold text-gray-900">{asset.name}</div>
           <div className="text-xs text-gray-400 font-mono mt-1 break-all">{qrUrl}</div>
         </div>
-
-        {/* Yazdırılabilir etiket önizlemesi */}
         <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 bg-gray-50">
           <div className="text-xs text-gray-400 mb-2 font-semibold">Etiket Önizlemesi:</div>
           <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-200 p-3">
@@ -128,7 +63,6 @@ function AssetQRModal({ asset, onClose }: { asset: Asset; onClose: () => void })
             </div>
           </div>
         </div>
-
         <div className="flex gap-2">
           <button onClick={() => { navigator.clipboard.writeText(qrUrl); toast('Link kopyalandı','success') }}
             className="flex-1 py-2.5 border border-gray-200 text-gray-600 font-semibold rounded-xl text-sm hover:bg-gray-50">
@@ -139,7 +73,6 @@ function AssetQRModal({ asset, onClose }: { asset: Asset; onClose: () => void })
             ⬇ QR İndir (400px)
           </a>
         </div>
-
         <div className="text-xs text-gray-400 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
           💡 QR kodu indirip A4'e yazdırın, laminasyon yaptırıp eşyanın üstüne yapıştırın. Tarayınca detay sayfası açılır.
         </div>
@@ -148,92 +81,122 @@ function AssetQRModal({ asset, onClose }: { asset: Asset; onClose: () => void })
   )
 }
 
-const DEMO_FAULTS: FaultReport[] = [
-  {id:'f1', asset_id:'a6', asset_code:'DMB-006', asset_name:'Projeksiyon', type:'ariza', description:'Projeksiyon lambası yanmıyor, ekran tamamen karardı. Açma kapama yaptım düzelmedi.', reporter:'Fatma Öğretmen', reported_at:'2026-06-16T09:15:00', status:'serviste', service_note:'Servis çağrıldı, lamba siparişte'},
-  {id:'f2', asset_id:'a4', asset_code:'DMB-004', asset_name:'Klima (Split)', type:'bakim', description:'Klimadan garip ses geliyor ve soğutmuyor. Filtre çok kirli olabilir.', reporter:'Ahmet Hoca', reported_at:'2026-06-14T14:30:00', status:'goruldu'},
-  {id:'f3', asset_id:'a9', asset_code:'DMB-009', asset_name:'Yangın Söndürücü', type:'bakim', description:'Yangın söndürücü dolum tarihi geçmiş, yenilenmesi gerekiyor.', reporter:'Fatma Öğretmen', reported_at:'2026-06-13T11:00:00', status:'bekliyor'},
-]
-
-// ─── ANA BILEŞEN ─────────────────────────────────────────────────────────────
 export default function AssetsPage() {
   const { toast } = useToast()
-  const navigate = useNavigate()
-  const [assets, setAssets] = useState<Asset[]>(DEMO_ASSETS)
-  const [logs, setLogs] = useState<MaintenanceLog[]>(DEMO_LOGS)
-  const [faults, setFaults] = useState<FaultReport[]>(DEMO_FAULTS)
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [assets, setAssets] = useState<any[]>([])
+  const [logs, setLogs] = useState<any[]>([])
+
   const [tab, setTab] = useState<Tab>('liste')
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState<Category|''>('')
   const [condFilter, setCondFilter] = useState<Condition|''>('')
-  const [qrAsset, setQrAsset] = useState<Asset|null>(null)
-  const [detailAsset, setDetailAsset] = useState<Asset|null>(null)
-  const [logModal, setLogModal] = useState<Asset|null>(null)
+  const [qrAsset, setQrAsset] = useState<any|null>(null)
+  const [detailAsset, setDetailAsset] = useState<any|null>(null)
+  const [detailLogs, setDetailLogs] = useState<any[]>([])
+  const [logModal, setLogModal] = useState<any|null>(null)
   const [logForm, setLogForm] = useState({type:'bakim' as 'bakim'|'tamir'|'degisim', note:'', cost:'', date:new Date().toISOString().split('T')[0]})
+  const [saving, setSaving] = useState(false)
 
-  // Ekle formu
-  const [form, setForm] = useState<Partial<Asset> & {purchase_price_str:string}>({
+  const [form, setForm] = useState<any>({
     name:'', category:'dini', condition:'iyi', quantity:1, unit:'Adet',
     location:'Ana Salon', purchase_price_str:'', supplier:'', serial_no:'', note:''
   })
-  const ff = (k:string,v:any)=>setForm(p=>({...p,[k]:v}))
+  const ff = (k:string,v:any)=>setForm((p:any)=>({...p,[k]:v}))
 
-  const nextCode = () => {
-    const nums = assets.map(a=>parseInt(a.code.replace('DMB-',''))).filter(n=>!isNaN(n))
-    const max = nums.length ? Math.max(...nums) : 0
-    return `DMB-${String(max+1).padStart(3,'0')}`
-  }
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const [a, l] = await Promise.all([assetsApi.list(), assetsApi.allMaintenanceLogs()])
+        if (!cancelled) { setAssets(a); setLogs(l) }
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Demirbaşlar yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
-  const addAsset = () => {
+  const addAsset = async () => {
     if (!form.name?.trim()) { toast('Demirbaş adı zorunlu','error'); return }
-    const code = nextCode()
-    const newAsset: Asset = {
-      id: 'a'+Date.now(), code,
-      name: form.name!, category: form.category as Category,
-      condition: form.condition as Condition, quantity: form.quantity||1,
-      unit: form.unit||'Adet', location: form.location||'',
-      purchase_date: form.purchase_date, supplier: form.supplier,
-      purchase_price: form.purchase_price_str ? parseFloat(form.purchase_price_str) : undefined,
-      serial_no: form.serial_no, note: form.note,
-      next_maintenance: form.next_maintenance,
-      created_at: new Date().toISOString().split('T')[0]
+    setSaving(true)
+    try {
+      const created = await assetsApi.create({
+        name: form.name, category: form.category, condition: form.condition,
+        quantity: form.quantity || 1, unit: form.unit || 'Adet', location: form.location || undefined,
+        purchase_date: form.purchase_date || undefined, supplier: form.supplier || undefined,
+        purchase_price: form.purchase_price_str ? parseFloat(form.purchase_price_str) : undefined,
+        serial_no: form.serial_no || undefined, note: form.note || undefined,
+        next_maintenance: form.next_maintenance || undefined,
+      })
+      setAssets(p=>[created,...p])
+      toast(`${created.code} — ${form.name} eklendi ✅`, 'success')
+      setForm({name:'',category:'dini',condition:'iyi',quantity:1,unit:'Adet',location:'Ana Salon',purchase_price_str:'',supplier:'',serial_no:'',note:''})
+      setTab('liste')
+      setTimeout(()=>setQrAsset(created), 400)
+    } catch (e: any) {
+      toast(e.message || 'Demirbaş eklenemedi', 'error')
+    } finally {
+      setSaving(false)
     }
-    setAssets(p=>[newAsset,...p])
-    toast(`${code} — ${form.name} eklendi ✅`, 'success')
-    setForm({name:'',category:'dini',condition:'iyi',quantity:1,unit:'Adet',location:'Ana Salon',purchase_price_str:'',supplier:'',serial_no:'',note:''})
-    setTab('liste')
-    setTimeout(()=>setQrAsset(newAsset), 400)
   }
 
-  const addLog = () => {
+  const addLog = async () => {
     if (!logModal || !logForm.note.trim()) { toast('Not zorunlu','error'); return }
-    const newLog: MaintenanceLog = {
-      asset_id: logModal.id, date: logForm.date, type: logForm.type,
-      note: logForm.note, cost: logForm.cost ? parseFloat(logForm.cost) : undefined
+    setSaving(true)
+    try {
+      const newLog = await assetsApi.addMaintenanceLog(logModal.id, {
+        maintenance_type: logForm.type, log_date: logForm.date, note: logForm.note,
+        cost: logForm.cost ? parseFloat(logForm.cost) : undefined,
+      })
+      setLogs(p=>[newLog,...p])
+      if (logForm.type === 'bakim' || logForm.type === 'tamir') {
+        setAssets(p=>p.map(a=>a.id===logModal.id?{...a,condition:'iyi',last_maintenance: logForm.type === 'bakim' ? logForm.date : a.last_maintenance}:a))
+      }
+      toast('Bakım/onarım kaydedildi ✅','success')
+      setLogModal(null); setLogForm({type:'bakim',note:'',cost:'',date:new Date().toISOString().split('T')[0]})
+    } catch (e: any) {
+      toast(e.message || 'Kayıt eklenemedi', 'error')
+    } finally {
+      setSaving(false)
     }
-    setLogs(p=>[newLog,...p])
-    if (logForm.type === 'bakim') {
-      setAssets(p=>p.map(a=>a.id===logModal.id?{...a,last_maintenance:logForm.date,condition:'iyi'}:a))
-    }
-    if (logForm.type === 'tamir') {
-      setAssets(p=>p.map(a=>a.id===logModal.id?{...a,condition:'iyi'}:a))
-    }
-    toast('Bakım/onarım kaydedildi ✅','success')
-    setLogModal(null); setLogForm({type:'bakim',note:'',cost:'',date:new Date().toISOString().split('T')[0]})
   }
 
-  const deleteAsset = (id:string,name:string) => {
+  const deleteAsset = async (id:string,name:string) => {
     if(!confirm(`${name} demirbaşını silmek istiyor musunuz?`)) return
-    setAssets(p=>p.filter(a=>a.id!==id))
-    toast('Silindi','info')
+    try {
+      await assetsApi.delete(id)
+      setAssets(p=>p.filter(a=>a.id!==id))
+      toast('Silindi','info')
+    } catch (e: any) {
+      toast(e.message || 'Silme başarısız oldu', 'error')
+    }
+  }
+
+  const openDetail = async (asset: any) => {
+    setDetailAsset(asset)
+    try {
+      const l = await assetsApi.maintenanceLogs(asset.id)
+      setDetailLogs(l)
+    } catch {
+      setDetailLogs([])
+    }
   }
 
   const exportXLSX = () => {
     const data = assets.map(a=>({
       'Kod':a.code, 'Ad':a.name,
-      'Kategori':CAT_CONFIG[a.category].label,
-      'Durum':COND_CONFIG[a.condition].label,
+      'Kategori':CAT_CONFIG[a.category as Category]?.label || a.category,
+      'Durum':COND_CONFIG[a.condition as Condition]?.label || a.condition,
       'Adet':`${a.quantity} ${a.unit}`,
-      'Konum':a.location,
+      'Konum':a.location||'—',
       'Satın Alma':a.purchase_date||'—',
       'Fiyat (₺)':a.purchase_price||'—',
       'Tedarikçi':a.supplier||'—',
@@ -246,12 +209,11 @@ export default function AssetsPage() {
     const ws = XLSX.utils.json_to_sheet(data)
     ws['!cols'] = [{wch:10},{wch:25},{wch:15},{wch:18},{wch:10},{wch:15},{wch:12},{wch:12},{wch:18},{wch:15},{wch:12},{wch:14},{wch:30}]
     XLSX.utils.book_append_sheet(wb,ws,'Demirbaş Listesi')
-    // Bakım logları da
     const logData = logs.map(l=>({
       'Kod':assets.find(a=>a.id===l.asset_id)?.code||'—',
       'Demirbaş':assets.find(a=>a.id===l.asset_id)?.name||'—',
-      'Tarih':l.date,
-      'İşlem':l.type==='bakim'?'Bakım':l.type==='tamir'?'Tamir':'Değişim',
+      'Tarih':l.log_date,
+      'İşlem':l.maintenance_type==='bakim'?'Bakım':l.maintenance_type==='tamir'?'Tamir':'Değişim',
       'Not':l.note,
       'Maliyet (₺)':l.cost||0,
     }))
@@ -261,19 +223,16 @@ export default function AssetsPage() {
     toast('Excel indirildi ⬇️','success')
   }
 
-  // Filtreleme
   const filtered = assets.filter(a=>{
     const q = search.toLowerCase()
-    const mq = !q || a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q) || a.location.toLowerCase().includes(q) || (a.supplier||'').toLowerCase().includes(q)
+    const mq = !q || a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q) || (a.location||'').toLowerCase().includes(q) || (a.supplier||'').toLowerCase().includes(q)
     const mc = !catFilter || a.category===catFilter
     const md = !condFilter || a.condition===condFilter
     return mq&&mc&&md
   })
 
-  // Toplu QR yazdırma — filtrelenmiş listedeki tüm demirbaşları A4 etiket sayfası olarak açar
   const printAllQR = () => {
     if (filtered.length === 0) { toast('Yazdırılacak demirbaş yok','error'); return }
-
     const labelsHtml = filtered.map(a => {
       const qrLink = `${window.location.origin}/demirbase/${a.code}`
       const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrLink)}&bgcolor=ffffff&color=1B4332&margin=8`
@@ -298,28 +257,14 @@ export default function AssetsPage() {
           @page { size: A4; margin: 10mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, sans-serif; }
-          .grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 6mm;
-          }
-          .label {
-            border: 1px solid #ccc;
-            border-radius: 4mm;
-            padding: 4mm;
-            display: flex;
-            align-items: center;
-            gap: 3mm;
-            page-break-inside: avoid;
-          }
+          .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; }
+          .label { border: 1px solid #ccc; border-radius: 4mm; padding: 4mm; display: flex; align-items: center; gap: 3mm; page-break-inside: avoid; }
           .label img { width: 22mm; height: 22mm; flex-shrink: 0; }
           .label-text { min-width: 0; overflow: hidden; }
           .code { font-size: 9pt; font-weight: bold; color: #1B4332; font-family: monospace; }
           .name { font-size: 10pt; font-weight: bold; color: #111; line-height: 1.2; margin-top: 1mm; }
           .location { font-size: 8pt; color: #666; margin-top: 0.5mm; }
-          @media print {
-            .no-print { display: none; }
-          }
+          @media print { .no-print { display: none; } }
         </style>
       </head>
       <body>
@@ -333,19 +278,36 @@ export default function AssetsPage() {
       </html>`
 
     const printWindow = window.open('', '_blank')
-    if (printWindow) {
-      printWindow.document.write(html)
-      printWindow.document.close()
-    }
+    if (printWindow) { printWindow.document.write(html); printWindow.document.close() }
     toast(`${filtered.length} etiket hazırlandı, yeni sekmede açıldı 🖨️`, 'success')
   }
 
-  // Bakım yaklaşanlar
   const today = new Date().toISOString().split('T')[0]
   const maintenanceDue = assets.filter(a=>a.next_maintenance && a.next_maintenance <= new Date(Date.now()+30*86400000).toISOString().split('T')[0])
   const broken = assets.filter(a=>a.condition==='arizali')
-
+  const needsAttention = assets.filter(a=>a.condition==='arizali'||a.condition==='bakim')
   const totalValue = assets.reduce((s,a)=>(a.purchase_price||0)*a.quantity+s,0)
+
+  if (loading) return (
+    <AdminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </AdminLayout>
+  )
+
+  if (loadError) return (
+    <AdminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </AdminLayout>
+  )
 
   return (
     <AdminLayout>
@@ -365,12 +327,11 @@ export default function AssetsPage() {
             <div className="text-xs text-gray-400 font-semibold mt-0.5">Arızalı</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-4 text-center border-t-[3px] border-orange-400">
-            <div className="text-2xl font-extrabold text-orange-500">{faults.filter(f=>f.status==='bekliyor').length}</div>
-            <div className="text-xs text-gray-400 font-semibold mt-0.5">Bekleyen Arıza</div>
+            <div className="text-2xl font-extrabold text-orange-500">{needsAttention.length}</div>
+            <div className="text-xs text-gray-400 font-semibold mt-0.5">İlgilenilmesi Gereken</div>
           </div>
         </div>
 
-        {/* Uyarılar */}
         {broken.length>0 && (
           <div className="bg-red-50 border border-red-300 rounded-xl px-4 py-3 text-sm text-red-700 font-semibold">
             🔴 {broken.map(a=>a.name).join(', ')} arızalı! İşlem yapılması gerekiyor.
@@ -398,10 +359,9 @@ export default function AssetsPage() {
           </button>
         </div>
 
-        {/* ── LİSTE ─────────────────────────────────────────────────────── */}
+        {/* LİSTE */}
         {tab==='liste' && (
           <div className="space-y-3">
-            {/* Filtreler */}
             <div className="flex gap-2 flex-wrap">
               <input type="text" placeholder="🔍 Ad, kod, konum, tedarikçi..."
                 value={search} onChange={e=>setSearch(e.target.value)}
@@ -426,26 +386,22 @@ export default function AssetsPage() {
               </button>
             </div>
 
-            {/* Kart grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {filtered.map(a=>{
-                const cat = CAT_CONFIG[a.category]
-                const cond = COND_CONFIG[a.condition]
-                const assetLogs = logs.filter(l=>l.asset_id===a.id)
+                const cat = CAT_CONFIG[a.category as Category] || CAT_CONFIG.diger
+                const cond = COND_CONFIG[a.condition as Condition] || COND_CONFIG.iyi
                 return (
                   <div key={a.id} className={cn('bg-white rounded-2xl shadow-sm p-4 border-2 transition-all hover:shadow-md',
                     a.condition==='arizali'?'border-red-300':a.condition==='bakim'?'border-amber-300':'border-gray-100')}>
-                    {/* Üst */}
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <div className="text-[10px] font-bold text-gray-400 font-mono mb-0.5">{a.code}</div>
                         <div className="text-sm font-bold text-gray-900 leading-tight">{a.name}</div>
-                        <div className="text-xs text-gray-500 mt-0.5">{a.location} · {a.quantity} {a.unit}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{a.location||'—'} · {a.quantity} {a.unit}</div>
                       </div>
                       <div className="text-xl flex-shrink-0 ml-2">{cat.icon}</div>
                     </div>
 
-                    {/* Badges */}
                     <div className="flex gap-1.5 flex-wrap mb-3">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.color}`}>{cat.label}</span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${cond.color}`}>
@@ -454,7 +410,6 @@ export default function AssetsPage() {
                       </span>
                     </div>
 
-                    {/* Bilgiler */}
                     {a.next_maintenance && (
                       <div className={cn('text-xs px-2 py-1 rounded-lg mb-2',
                         a.next_maintenance<=today?'bg-red-50 text-red-600 font-semibold':
@@ -464,9 +419,8 @@ export default function AssetsPage() {
                     )}
                     {a.note && <div className="text-xs text-gray-400 italic mb-2 line-clamp-2">"{a.note}"</div>}
 
-                    {/* Butonlar */}
                     <div className="flex gap-1.5 flex-wrap">
-                      <button onClick={()=>setDetailAsset(a)}
+                      <button onClick={()=>openDetail(a)}
                         className="flex-1 py-1.5 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-50 transition-colors">
                         👁 Detay
                       </button>
@@ -497,12 +451,12 @@ export default function AssetsPage() {
           </div>
         )}
 
-        {/* ── EKLE ──────────────────────────────────────────────────────── */}
+        {/* EKLE */}
         {tab==='ekle' && (
           <div className="bg-white rounded-2xl shadow-sm p-5">
             <div className="text-sm font-bold text-gray-900 mb-4 pb-2 border-b border-gray-100">
               ➕ Yeni Demirbaş Ekle
-              <span className="ml-2 text-xs font-normal text-gray-400">Kod otomatik: {nextCode()}</span>
+              <span className="ml-2 text-xs font-normal text-gray-400">Kod otomatik atanır</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2">
@@ -578,15 +532,49 @@ export default function AssetsPage() {
             </div>
             <div className="flex gap-2 mt-4">
               <Button variant="outline" onClick={()=>setTab('liste')} className="flex-1 justify-center">İptal</Button>
-              <Button onClick={addAsset} className="flex-1 justify-center">✅ Ekle ve QR Oluştur</Button>
+              <Button onClick={addAsset} loading={saving} className="flex-1 justify-center">✅ Ekle ve QR Oluştur</Button>
             </div>
           </div>
         )}
 
-        {/* ── RAPOR ─────────────────────────────────────────────────────── */}
+        {/* ARIZALAR — gerçek veriden türetilmiş: condition='arizali' veya 'bakim' olan demirbaşlar */}
+        {tab==='arizalar' && (
+          <div className="space-y-3">
+            <Alert variant="info">ℹ️ Bu liste, durumu "Arızalı" veya "Bakım Gerekiyor" olarak işaretlenen demirbaşları gösterir. Bir demirbaşın durumunu değiştirmek için Liste sekmesinden Detay'a girin.</Alert>
+            {needsAttention.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-xl shadow-sm text-gray-400">
+                <div className="text-3xl mb-2">✅</div>
+                <p className="text-sm">Şu anda arızalı veya bakım gerektiren demirbaş yok</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {needsAttention.map(a => {
+                  const cond = COND_CONFIG[a.condition as Condition]
+                  return (
+                    <div key={a.id} className={cn('bg-white rounded-xl shadow-sm p-4 border-2', a.condition==='arizali'?'border-red-300':'border-amber-300')}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-400 font-mono">{a.code}</div>
+                          <div className="text-sm font-bold text-gray-900">{a.name}</div>
+                          <div className="text-xs text-gray-500">{a.location||'—'}</div>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${cond.color}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${cond.dot}`}/>{cond.label}
+                        </span>
+                      </div>
+                      {a.note && <div className="text-xs text-gray-500 italic mb-2">"{a.note}"</div>}
+                      <Button size="sm" onClick={()=>setLogModal(a)} className="w-full justify-center">🔧 Bakım/Onarım Kaydet</Button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* RAPOR */}
         {tab==='rapor' && (
           <div className="space-y-4">
-            {/* Kategori özeti */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 text-sm font-bold text-gray-900">Kategori Bazlı Özet</div>
               {Object.entries(CAT_CONFIG).map(([cat,conf])=>{
@@ -609,7 +597,6 @@ export default function AssetsPage() {
               </div>
             </div>
 
-            {/* Durum özeti */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 text-sm font-bold text-gray-900">Durum Özeti</div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-0">
@@ -627,25 +614,24 @@ export default function AssetsPage() {
               </div>
             </div>
 
-            {/* Bakım geçmişi */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 text-sm font-bold text-gray-900">Son Bakım/Onarım Kayıtları</div>
               {logs.length===0
                 ? <div className="text-center py-8 text-gray-400 text-sm">Bakım kaydı yok</div>
-                : [...logs].sort((a,b)=>b.date.localeCompare(a.date)).map((l,i)=>{
+                : [...logs].sort((a,b)=>b.log_date.localeCompare(a.log_date)).slice(0, 30).map((l,i)=>{
                     const asset = assets.find(a=>a.id===l.asset_id)
                     return (
                       <div key={i} className="flex items-start gap-3 px-4 py-3 border-b border-gray-50 last:border-0">
-                        <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${l.type==='bakim'?'bg-blue-100 text-blue-700':l.type==='tamir'?'bg-amber-100 text-amber-700':'bg-red-100 text-red-600'}`}>
-                          {l.type==='bakim'?'🔧 Bakım':l.type==='tamir'?'🔨 Tamir':'🔄 Değişim'}
+                        <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${l.maintenance_type==='bakim'?'bg-blue-100 text-blue-700':l.maintenance_type==='tamir'?'bg-amber-100 text-amber-700':'bg-red-100 text-red-600'}`}>
+                          {l.maintenance_type==='bakim'?'🔧 Bakım':l.maintenance_type==='tamir'?'🔨 Tamir':'🔄 Değişim'}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-semibold text-gray-700">{asset?.name} <span className="text-gray-400 font-mono">({asset?.code})</span></div>
                           <div className="text-xs text-gray-500">{l.note}</div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <div className="text-xs text-gray-400">{l.date}</div>
-                          {l.cost ? <div className="text-xs font-bold text-gray-700">{l.cost.toLocaleString('tr-TR')} ₺</div> : null}
+                          <div className="text-xs text-gray-400">{l.log_date}</div>
+                          {l.cost ? <div className="text-xs font-bold text-gray-700">{Number(l.cost).toLocaleString('tr-TR')} ₺</div> : null}
                         </div>
                       </div>
                     )
@@ -661,10 +647,8 @@ export default function AssetsPage() {
         )}
       </div>
 
-      {/* QR Modal */}
       {qrAsset && <AssetQRModal asset={qrAsset} onClose={()=>setQrAsset(null)}/>}
 
-      {/* Detay Modal */}
       {detailAsset && (
         <Modal open={!!detailAsset} onClose={()=>setDetailAsset(null)} title={`📋 ${detailAsset.name}`} wide
           footer={<>
@@ -673,15 +657,15 @@ export default function AssetsPage() {
           </>}>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {[
-              ['Kod', detailAsset.code],['Kategori', CAT_CONFIG[detailAsset.category]?.label],
-              ['Durum', COND_CONFIG[detailAsset.condition]?.label],['Adet', `${detailAsset.quantity} ${detailAsset.unit}`],
-              ['Konum', detailAsset.location],['Satın Alma', detailAsset.purchase_date||'—'],
-              ['Fiyat', detailAsset.purchase_price?detailAsset.purchase_price.toLocaleString('tr-TR')+' ₺':'—'],
+              ['Kod', detailAsset.code],['Kategori', CAT_CONFIG[detailAsset.category as Category]?.label],
+              ['Durum', COND_CONFIG[detailAsset.condition as Condition]?.label],['Adet', `${detailAsset.quantity} ${detailAsset.unit}`],
+              ['Konum', detailAsset.location||'—'],['Satın Alma', detailAsset.purchase_date||'—'],
+              ['Fiyat', detailAsset.purchase_price?Number(detailAsset.purchase_price).toLocaleString('tr-TR')+' ₺':'—'],
               ['Tedarikçi', detailAsset.supplier||'—'],
               ['Seri No', detailAsset.serial_no||'—'],
               ['Son Bakım', detailAsset.last_maintenance||'—'],
               ['Sonraki Bakım', detailAsset.next_maintenance||'—'],
-              ['Kayıt Tarihi', detailAsset.created_at],
+              ['Kayıt Tarihi', detailAsset.created_at?.split('T')[0]],
             ].map(([l,v])=>(
               <div key={l} className="flex gap-2 text-xs py-1.5 border-b border-gray-50">
                 <span className="text-gray-400 w-24 flex-shrink-0 font-semibold">{l}</span>
@@ -692,15 +676,14 @@ export default function AssetsPage() {
           {detailAsset.note && (
             <div className="mt-3 bg-gray-50 rounded-lg p-3 text-xs text-gray-600 italic">"{detailAsset.note}"</div>
           )}
-          {/* Bakım geçmişi */}
-          {logs.filter(l=>l.asset_id===detailAsset.id).length>0 && (
+          {detailLogs.length>0 && (
             <div className="mt-3">
               <div className="text-xs font-bold text-gray-500 uppercase mb-2">Bakım Geçmişi</div>
-              {logs.filter(l=>l.asset_id===detailAsset.id).map((l,i)=>(
+              {detailLogs.map((l,i)=>(
                 <div key={i} className="flex gap-3 text-xs py-1.5 border-b border-gray-50 last:border-0">
-                  <span className="text-gray-400">{l.date}</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${l.type==='bakim'?'bg-blue-100 text-blue-700':'bg-amber-100 text-amber-700'}`}>
-                    {l.type==='bakim'?'Bakım':'Tamir'}
+                  <span className="text-gray-400">{l.log_date}</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${l.maintenance_type==='bakim'?'bg-blue-100 text-blue-700':'bg-amber-100 text-amber-700'}`}>
+                    {l.maintenance_type==='bakim'?'Bakım':l.maintenance_type==='tamir'?'Tamir':'Değişim'}
                   </span>
                   <span className="text-gray-600 flex-1">{l.note}</span>
                   {l.cost?<span className="text-gray-500 flex-shrink-0">{l.cost} ₺</span>:null}
@@ -711,10 +694,9 @@ export default function AssetsPage() {
         </Modal>
       )}
 
-      {/* Bakım/Onarım Modal */}
       {logModal && (
         <Modal open={!!logModal} onClose={()=>setLogModal(null)} title={`🔧 ${logModal.name} — Bakım/Onarım Kaydı`}
-          footer={<><Button variant="outline" onClick={()=>setLogModal(null)}>İptal</Button><Button onClick={addLog}>Kaydet</Button></>}>
+          footer={<><Button variant="outline" onClick={()=>setLogModal(null)}>İptal</Button><Button onClick={addLog} loading={saving}>Kaydet</Button></>}>
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">İşlem Türü</label>

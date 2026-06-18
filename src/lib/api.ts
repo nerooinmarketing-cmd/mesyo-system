@@ -147,6 +147,8 @@ export const attendanceApi = {
     req<any[]>(`/attendance/report?classroom_id=${classroom_id}&start=${start}&end=${end}`),
   studentSummary: (student_id: string) =>
     req<any>(`/attendance/student/${student_id}/summary`),
+  teacherLog: (start: string, end: string) =>
+    req<any[]>(`/attendance/teacher-log?start=${start}&end=${end}`),
 }
 
 // ── PUBLIC ─────────────────────────────────────────────────────────────────────
@@ -215,5 +217,19 @@ export const usersApi = {
   resetPassword: (id: string, newPassword: string) =>
     req(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ new_password: newPassword }) }),
   delete: (id: string) => req(`/users/${id}`, { method: 'DELETE' }),
+}
+
+// ── ASSETS (demirbaş yönetimi) ─────────────────────────────────────────────────────
+export const assetsApi = {
+  list: () => req<any[]>('/assets'),
+  create: (data: Record<string, any>) =>
+    req<any>('/assets', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Record<string, any>) =>
+    req<any>(`/assets/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => req(`/assets/${id}`, { method: 'DELETE' }),
+  allMaintenanceLogs: () => req<any[]>('/assets/maintenance-logs'),
+  maintenanceLogs: (assetId: string) => req<any[]>(`/assets/${assetId}/maintenance-logs`),
+  addMaintenanceLog: (assetId: string, data: { maintenance_type: string; log_date: string; note: string; cost?: number }) =>
+    req<any>(`/assets/${assetId}/maintenance-logs`, { method: 'POST', body: JSON.stringify(data) }),
 }
 

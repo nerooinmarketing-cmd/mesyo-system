@@ -1,30 +1,28 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { Accordion, Button, Badge, Alert, useToast, Modal, Select } from '@/components/ui'
 import { calcAge, waLink } from '@/lib/utils'
-import { DEMO_STUDENTS, DEMO_CLASSROOMS } from '@/lib/demo-data'
+import { studentsApi, classroomsApi, seasonsApi } from '@/lib/api'
 
 type Filter = 'tumu' | 'bekleyen' | 'onaylandi' | 'reddedildi'
 type GenderFilter = 'tumu' | 'erkek' | 'kiz'
 
-const SEASONS = [
-  { id:'s2026', name:'2026 Yaz Kursu', archived:false },
-  { id:'s2025', name:'2025 Yaz Kursu', archived:true },
-]
-
 export default function RegistrationsPage() {
   const { toast } = useToast()
   const [searchParams] = useSearchParams()
-  const [students, setStudents] = useState(
-    DEMO_STUDENTS.map((s,i) => ({ ...s, season_id:'s2026', status: i<3?'pending':i<7?'approved':'pending' as any }))
-  )
-  const classrooms = DEMO_CLASSROOMS
+
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [seasons, setSeasons] = useState<any[]>([])
+  const [classrooms, setClassrooms] = useState<any[]>([])
+  const [students, setStudents] = useState<any[]>([])
+  const [activeSeason, setActiveSeason] = useState('')
+
   const [filter, setFilter] = useState<Filter>('tumu')
   const [gender, setGender] = useState<GenderFilter>('tumu')
   const [search, setSearch] = useState('')
   const [ageFilter, setAgeFilter] = useState(searchParams.get('age')||'')
-  const [activeSeason, setActiveSeason] = useState('s2026')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkCls, setBulkCls] = useState('')
   const [assignModal, setAssignModal] = useState<{open:boolean;sid:string;sname:string}>({open:false,sid:'',sname:''})
@@ -32,66 +30,175 @@ export default function RegistrationsPage() {
   const [rejectModal, setRejectModal] = useState<{open:boolean;sid:string;sname:string}>({open:false,sid:'',sname:''})
   const [rejectReason, setRejectReason] = useState('')
 
-  const pending = students.filter(s=>s.season_id===activeSeason && s.status==='pending').length
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const [seasonList, classroomList] = await Promise.all([seasonsApi.list(), classroomsApi.list()])
+        if (cancelled) return
+        setSeasons(seasonList)
+        setClassrooms(classroomList)
+        const active = seasonList.find((s: any) => s.is_active) || seasonList[0]
+        if (active) setActiveSeason(active.id)
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e.message || 'Veriler yüklenirken bir hata oluştu')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (!activeSeason) return
+    let cancelled = false
+    async function loadStudents() {
+      try {
+        const list = await studentsApi.list({ season_id: activeSeason })
+        if (!cancelled) setStudents(list)
+      } catch (e: any) {
+        if (!cancelled) toast(e.message || 'Öğrenciler yüklenemedi', 'error')
+      }
+    }
+    loadStudents()
+    return () => { cancelled = true }
+  }, [activeSeason])
+
+  const pending = students.filter(s=>s.status==='pending').length
 
   const filtered = students.filter(s => {
-    if (s.season_id !== activeSeason) return false
+    const fullName = `${s.first_name} ${s.last_name}`
+    const parentName = `${s.parent_first_name} ${s.parent_last_name}`
     const q = search.toLowerCase()
-    const mq = !q || (s.first_name + ' ' + s.last_name).toLowerCase().includes(q) || (s.parent_first_name + ' ' + s.parent_last_name).toLowerCase().includes(q) || (s.mahalle||'').toLowerCase().includes(q)
+    const mq = !q || fullName.toLowerCase().includes(q) || parentName.toLowerCase().includes(q) || (s.mahalle||'').toLowerCase().includes(q)
     const ma = !ageFilter || calcAge(s.birth_date)===parseInt(ageFilter)
     const mf = filter==='bekleyen'?s.status==='pending':filter==='onaylandi'?s.status==='approved':filter==='reddedildi'?s.status==='rejected':true
     const mg = gender==='tumu'?true:s.gender===gender
     return mq && ma && mf && mg
   })
 
-  const approve = (sid: string) => {
+  const approve = async (sid: string) => {
     const s = students.find(x=>x.id===sid)
-    setStudents(p=>p.map(x=>x.id===sid?{...x,status:'approved'}:x))
-    toast('Başvuru onaylandı ✅','success')
-    if (s) {
-      const msg = `Sayın ${(s.parent_first_name + ' ' + s.parent_last_name)} 👋\n\n${(s.first_name + ' ' + s.last_name)} için yaptığınız başvuru onaylandı! 🎉\n\nEğitim programımıza hoş geldiniz.\n\nSevgi ve saygılarımızla 🌿\nMesyo Eğitim`
-      setTimeout(() => window.open(waLink(s.parent_phone, msg),'_blank'), 300)
+    try {
+      await studentsApi.approve(sid)
+      setStudents(p=>p.map(x=>x.id===sid?{...x,status:'approved'}:x))
+      toast('Başvuru onaylandı ✅','success')
+      if (s) {
+        const fullName = `${s.first_name} ${s.last_name}`
+        const parentName = `${s.parent_first_name} ${s.parent_last_name}`
+        const msg = `Sayın ${parentName} 👋\n\n${fullName} için yaptığınız başvuru onaylandı! 🎉\n\nEğitim programımıza hoş geldiniz.\n\nSevgi ve saygılarımızla 🌿\nMesyo Eğitim`
+        setTimeout(() => window.open(waLink(s.parent_phone, msg),'_blank'), 300)
+      }
+    } catch (e: any) {
+      toast(e.message || 'Onaylama başarısız oldu', 'error')
     }
   }
 
-  const reject = (sid: string) => {
+  const reject = async (sid: string) => {
     const s = students.find(x=>x.id===sid)
-    setStudents(p=>p.map(x=>x.id===sid?{...x,status:'rejected'}:x))
-    setRejectModal(p=>({...p,open:false})); setRejectReason('')
-    toast('Başvuru reddedildi','info')
-    if (s) {
-      const msg = `Sayın ${(s.parent_first_name + ' ' + s.parent_last_name)} 👋\n\n${(s.first_name + ' ' + s.last_name)} için yaptığınız başvuru değerlendirilmiş olup maalesef kabul edilememiştir.${rejectReason?'\n\nNeden: '+rejectReason:''}\n\nAnlayışınız için teşekkür ederiz.\n\nSaygılarımızla 🌿\nMesyo Eğitim`
-      setTimeout(() => window.open(waLink(s.parent_phone, msg),'_blank'), 300)
+    try {
+      await studentsApi.reject(sid, rejectReason || undefined)
+      setStudents(p=>p.map(x=>x.id===sid?{...x,status:'rejected'}:x))
+      setRejectModal(p=>({...p,open:false})); setRejectReason('')
+      toast('Başvuru reddedildi','info')
+      if (s) {
+        const fullName = `${s.first_name} ${s.last_name}`
+        const parentName = `${s.parent_first_name} ${s.parent_last_name}`
+        const msg = `Sayın ${parentName} 👋\n\n${fullName} için yaptığınız başvuru değerlendirilmiş olup maalesef kabul edilememiştir.${rejectReason?'\n\nNeden: '+rejectReason:''}\n\nAnlayışınız için teşekkür ederiz.\n\nSaygılarımızla 🌿\nMesyo Eğitim`
+        setTimeout(() => window.open(waLink(s.parent_phone, msg),'_blank'), 300)
+      }
+    } catch (e: any) {
+      toast(e.message || 'Reddetme başarısız oldu', 'error')
     }
   }
 
-  const doAssign = (sid:string,cid:string) => { setStudents(p=>p.map(s=>s.id===sid?{...s,classroom_id:cid}:s)); toast('Sınıfa atandı ✅','success') }
-  const doDelete = (sid:string,name:string) => { if(!confirm(`${name} silinsin mi?`)) return; setStudents(p=>p.filter(s=>s.id!==sid)); toast('Silindi','info') }
+  const doAssign = async (sid:string,cid:string) => {
+    try {
+      const updated = await studentsApi.assignClassroom(sid, cid)
+      setStudents(p=>p.map(s=>s.id===sid?updated:s))
+      toast('Sınıfa atandı ✅','success')
+    } catch (e: any) {
+      toast(e.message || 'Atama başarısız oldu', 'error')
+    }
+  }
+
+  const doDelete = async (sid:string,name:string) => {
+    if(!confirm(`${name} silinsin mi?`)) return
+    try {
+      await studentsApi.delete(sid)
+      setStudents(p=>p.filter(s=>s.id!==sid))
+      toast('Silindi','info')
+    } catch (e: any) {
+      toast(e.message || 'Silme başarısız oldu', 'error')
+    }
+  }
+
   const toggleSel = (id:string) => setSelected(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n})
-  const doBulk = () => {
+
+  const doBulk = async () => {
     if(!bulkCls||!selected.size){toast('Sınıf ve öğrenci seçin','error');return}
-    setStudents(p=>p.map(s=>selected.has(s.id)?{...s,classroom_id:bulkCls,status:'approved'}:s))
-    toast(`${selected.size} öğrenci atandı ve onaylandı ✅`,'success'); setSelected(new Set()); setBulkCls('')
+    try {
+      const ids = Array.from(selected)
+      for (const sid of ids) {
+        await studentsApi.assignClassroom(sid, bulkCls)
+        await studentsApi.approve(sid)
+      }
+      setStudents(p=>p.map(s=>selected.has(s.id)?{...s,classroom_id:bulkCls,status:'approved'}:s))
+      toast(`${selected.size} öğrenci atandı ve onaylandı ✅`,'success')
+      setSelected(new Set()); setBulkCls('')
+    } catch (e: any) {
+      toast(e.message || 'Toplu işlem sırasında bir hata oluştu', 'error')
+    }
   }
 
-  const counts = { bekleyen: students.filter(s=>s.season_id===activeSeason&&s.status==='pending').length, onaylandi: students.filter(s=>s.season_id===activeSeason&&s.status==='approved').length, reddedildi: students.filter(s=>s.season_id===activeSeason&&s.status==='rejected').length }
+  const counts = {
+    bekleyen: students.filter(s=>s.status==='pending').length,
+    onaylandi: students.filter(s=>s.status==='approved').length,
+    reddedildi: students.filter(s=>s.status==='rejected').length,
+  }
+
+  if (loading) return (
+    <AdminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </AdminLayout>
+  )
+
+  if (loadError) return (
+    <AdminLayout>
+      <Alert variant="warn">{loadError}</Alert>
+      <button onClick={() => window.location.reload()}
+        className="mt-3 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg">
+        Tekrar Dene
+      </button>
+    </AdminLayout>
+  )
 
   return (
     <AdminLayout pendingCount={pending}>
       <div className="space-y-3">
         {/* Sezon */}
-        <div className="flex gap-2 flex-wrap items-center">
-          {SEASONS.map(s=>(
-            <button key={s.id} onClick={()=>setActiveSeason(s.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${activeSeason===s.id?'bg-green-500 text-white border-green-500':'border-gray-200 text-gray-500'}`}>
-              {s.archived?'📦 ':'📅 '}{s.name}
-            </button>
-          ))}
-        </div>
+        {seasons.length > 0 && (
+          <div className="flex gap-2 flex-wrap items-center">
+            {seasons.map(s=>(
+              <button key={s.id} onClick={()=>setActiveSeason(s.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${activeSeason===s.id?'bg-green-500 text-white border-green-500':'border-gray-200 text-gray-500'}`}>
+                {!s.is_active?'📦 ':'📅 '}{s.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Onay özeti */}
         <div className="grid grid-cols-3 gap-2">
-          {[['bekleyen','⏳ Bekleyen',counts.bekleyen,'amber'],['onaylandi','✅ Onaylı',counts.onaylandi,'green'],['reddedildi','❌ Reddedildi',counts.reddedildi,'red']].map(([f,l,v,c])=>(
+          {([['bekleyen','⏳ Bekleyen',counts.bekleyen,'amber'],['onaylandi','✅ Onaylı',counts.onaylandi,'green'],['reddedildi','❌ Reddedildi',counts.reddedildi,'red']] as const).map(([f,l,v,c])=>(
             <button key={f} onClick={()=>setFilter(f as Filter)}
               className={`bg-white rounded-xl shadow-sm p-3 text-center border-t-[3px] transition-all ${filter===f?'ring-2 ring-offset-1':''}  border-${c}-400`}>
               <div className={`text-2xl font-extrabold text-${c}-500`}>{v}</div>
@@ -140,16 +247,18 @@ export default function RegistrationsPage() {
           : filtered.map(s=>{
               const cls = classrooms.find(c=>c.id===s.classroom_id)
               const a = calcAge(s.birth_date)
+              const fullName = `${s.first_name} ${s.last_name}`
+              const parentName = `${s.parent_first_name} ${s.parent_last_name}`
               const statusColor = s.status==='approved'?'#16A34A':s.status==='rejected'?'#EF4444':'#F59E0B'
               return (
                 <Accordion key={s.id} leftBorder={statusColor}
                   header={
                     <>
                       <input type="checkbox" checked={selected.has(s.id)} onChange={()=>toggleSel(s.id)} onClick={e=>e.stopPropagation()} className="w-4 h-4 accent-green-500 flex-shrink-0" />
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${s.gender==='erkek'?'bg-blue-100 text-blue-700':'bg-pink-100 text-pink-700'}`}>{(s.first_name + ' ' + s.last_name).charAt(0)}</div>
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${s.gender==='erkek'?'bg-blue-100 text-blue-700':'bg-pink-100 text-pink-700'}`}>{fullName.charAt(0)}</div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-gray-900 truncate">{(s.first_name + ' ' + s.last_name)}</div>
-                        <div className="text-xs text-gray-400">{a} yaş • {s.gender==='erkek'?'👦':'👧'} • {s.mahalle||'—'} • {s.created_at}</div>
+                        <div className="text-sm font-bold text-gray-900 truncate">{fullName}</div>
+                        <div className="text-xs text-gray-400">{a} yaş • {s.gender==='erkek'?'👦':'👧'} • {s.mahalle||'—'} • {s.created_at?.split('T')[0]}</div>
                       </div>
                       <Badge variant={s.status==='approved'?'green':s.status==='rejected'?'red':'amber'}>
                         {s.status==='approved'?'✅ Onaylı':s.status==='rejected'?'❌ Reddedildi':'⏳ Bekliyor'}
@@ -158,7 +267,7 @@ export default function RegistrationsPage() {
                   }>
                   <div className="space-y-0 mb-3">
                     {[
-                      ['👤 Veli',(s.parent_first_name + ' ' + s.parent_last_name)],['📱 Telefon',s.parent_phone],
+                      ['👤 Veli',parentName],['📱 Telefon',s.parent_phone],
                       ['🎂 Yaş',`${a} yaş`],['📍 Adres',`${s.mahalle||'—'}${s.sokak?' / '+s.sokak:''}`],
                       ['🏫 Sınıf',s.classroom_id?cls?.name||'—':'Atanmamış'],
                     ].map(([l,v])=>(
@@ -171,15 +280,15 @@ export default function RegistrationsPage() {
                   <div className="flex gap-2 flex-wrap">
                     {s.status==='pending' && <>
                       <Button size="sm" onClick={()=>approve(s.id)}>✅ Onayla + WA Gönder</Button>
-                      <Button size="sm" variant="danger" onClick={()=>{setRejectModal({open:true,sid:s.id,sname:(s.first_name + ' ' + s.last_name)});setRejectReason('')}}>❌ Reddet</Button>
+                      <Button size="sm" variant="danger" onClick={()=>{setRejectModal({open:true,sid:s.id,sname:fullName});setRejectReason('')}}>❌ Reddet</Button>
                     </>}
                     {s.status==='approved' && !s.classroom_id && (
-                      <Button size="sm" onClick={()=>{setAssignModal({open:true,sid:s.id,sname:(s.first_name + ' ' + s.last_name)});setAssignCls('')}}>🏫 Sınıfa Ata</Button>
+                      <Button size="sm" onClick={()=>{setAssignModal({open:true,sid:s.id,sname:fullName});setAssignCls('')}}>🏫 Sınıfa Ata</Button>
                     )}
-                    <a href={waLink(s.parent_phone,`Sayın ${(s.parent_first_name + ' ' + s.parent_last_name)}, öğrenciniz ${(s.first_name + ' ' + s.last_name)} ile ilgili iletişime geçebilirsiniz.`)}
+                    <a href={waLink(s.parent_phone,`Sayın ${parentName}, öğrenciniz ${fullName} ile ilgili iletişime geçebilirsiniz.`)}
                       target="_blank" rel="noreferrer"
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] text-white text-xs font-semibold rounded-lg">💬 WA</a>
-                    <Button size="sm" variant="danger" onClick={()=>doDelete(s.id,(s.first_name + ' ' + s.last_name))}>🗑️</Button>
+                    <Button size="sm" variant="danger" onClick={()=>doDelete(s.id,fullName)}>🗑️</Button>
                   </div>
                 </Accordion>
               )
