@@ -149,6 +149,8 @@ export const attendanceApi = {
     req<any>(`/attendance/student/${student_id}/summary`),
   teacherLog: (start: string, end: string) =>
     req<any[]>(`/attendance/teacher-log?start=${start}&end=${end}`),
+  dashboardSummary: (start: string, end: string) =>
+    req<any[]>(`/attendance/dashboard-summary?start=${start}&end=${end}`),
 }
 
 // ── PUBLIC ─────────────────────────────────────────────────────────────────────
