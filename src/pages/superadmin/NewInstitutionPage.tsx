@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SuperadminLayout } from '@/components/layout/SuperadminLayout'
+import { superadminApi } from '@/lib/api'
 
 export default function NewInstitutionPage() {
   const navigate = useNavigate()
@@ -25,13 +26,31 @@ export default function NewInstitutionPage() {
     if (!form.name || !form.slug || !form.responsible_name || !form.responsible_phone || !form.admin_phone || !form.admin_password) {
       setError('Zorunlu alanları doldurun'); return
     }
+    if (form.admin_password.length < 4) {
+      setError('Şifre en az 4 karakter olmalı'); return
+    }
     setLoading(true); setError('')
     try {
-      // await superadminApi.createInstitution(form)
-      await new Promise(r => setTimeout(r, 800)) // demo
+      await superadminApi.createInstitution({
+        name: form.name,
+        slug: form.slug,
+        city: form.city,
+        district: form.district,
+        address: form.address || undefined,
+        responsible_name: form.responsible_name,
+        responsible_phone: form.responsible_phone,
+        email: form.email || undefined,
+        student_limit: parseInt(form.student_limit) || 150,
+        admin_phone: form.admin_phone,
+        admin_password: form.admin_password,
+        subscription_status: form.subscription_status as any,
+      })
       navigate('/superadmin')
-    } catch (e: any) { setError(e.message) }
-    setLoading(false)
+    } catch (e: any) {
+      setError(e.message || 'Kurum oluşturulamadı')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
