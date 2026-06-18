@@ -153,6 +153,11 @@ export const attendanceApi = {
 export const publicApi = {
   institutionBySlug: (slug: string) =>
     req<{ id: string; name: string; city: string; is_active: boolean }>(`/public/institution/${slug}`),
+  submitInstitutionApplication: (data: {
+    name: string; city?: string; district: string; address?: string
+    responsible_name: string; responsible_phone: string; email?: string
+    student_count_estimate?: string; note?: string; kvkk: boolean
+  }) => req('/public/institution-applications', { method: 'POST', body: JSON.stringify(data) }),
 }
 
 // ── ASSIGNMENTS ────────────────────────────────────────────────────────────────

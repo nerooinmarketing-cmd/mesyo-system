@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { publicApi } from '@/lib/api'
 
 type Step = 'form' | 'success'
 
@@ -11,6 +12,7 @@ export default function InstitutionRegisterPage() {
     student_count_estimate:'', note:'', kvkk:false
   })
   const [errors, setErrors] = useState<Record<string,string>>({})
+  const [submitError, setSubmitError] = useState('')
 
   const f = (k: string, v: string) => { setForm(p=>({...p,[k]:v})); setErrors(p=>{const n={...p};delete n[k];return n}) }
 
@@ -30,9 +32,26 @@ export default function InstitutionRegisterPage() {
   const submit = async () => {
     if (!validate()) return
     setLoading(true)
-    await new Promise(r=>setTimeout(r,800))
-    setLoading(false)
-    setStep('success')
+    setSubmitError('')
+    try {
+      await publicApi.submitInstitutionApplication({
+        name: form.name,
+        city: form.city,
+        district: form.district,
+        address: form.address || undefined,
+        responsible_name: form.responsible_name,
+        responsible_phone: form.responsible_phone,
+        email: form.email || undefined,
+        student_count_estimate: form.student_count_estimate || undefined,
+        note: form.note || undefined,
+        kvkk: form.kvkk,
+      })
+      setStep('success')
+    } catch (e: any) {
+      setSubmitError(e.message || 'Başvuru gönderilemedi, lütfen tekrar deneyin')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (step === 'success') return (
@@ -151,6 +170,10 @@ export default function InstitutionRegisterPage() {
           </label>
           {errors.kvkk && <p className="text-xs text-red-500 mt-2 ml-8">{errors.kvkk}</p>}
         </div>
+
+        {submitError && (
+          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">{submitError}</div>
+        )}
 
         <button onClick={submit} disabled={loading}
           className="w-full py-4 bg-green-500 hover:bg-green-600 text-white font-bold rounded-2xl text-base disabled:opacity-50 transition-colors">
