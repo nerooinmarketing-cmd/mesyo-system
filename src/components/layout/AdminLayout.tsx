@@ -52,6 +52,11 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
 
   // Dashboard her zaman var
   const dashItem = { to:'/admin/dashboard', icon:LayoutDashboard, label:'Genel Bakış', badge:false, moduleId:undefined }
+  const coreItems = [
+    { to:'/admin/seasons',    icon:Archive,   label:'Sezonlar', badge:false, moduleId:undefined },
+    { to:'/admin/classrooms', icon:School,    label:'Sınıflar', badge:false, moduleId:undefined },
+    { to:'/admin/teachers',   icon:Users,     label:'Öğretmenler', badge:false, moduleId:undefined },
+  ]
   const navItems = [
     dashItem,
     ...activeNavItems.map(m => ({
@@ -60,7 +65,8 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
       label: m.name.replace(' Yönetimi','').replace(' Takibi',''),
       badge: m.id === 'registrations',
       moduleId: m.id,
-    })).filter(i => i.to),
+    })).filter(i => i.to && !coreItems.find(c => c.to === i.to)),
+    ...coreItems,
   ]
 
   return (
