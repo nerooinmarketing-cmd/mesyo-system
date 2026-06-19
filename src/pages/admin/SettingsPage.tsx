@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { Button, useToast } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
+import { institutionSettingsApi } from '@/lib/api'
 
 export default function SettingsPage() {
   const { user, logout } = useAuth()
@@ -21,7 +22,58 @@ export default function SettingsPage() {
 
   const [pw, setPw] = useState({ old:'', new1:'', new2:'' })
   const [saving, setSaving] = useState(false)
-  const [tab, setTab] = useState<'kurum'|'hesap'|'bildirim'>('kurum')
+  const [tab, setTab] = useState<'kurum'|'hesap'|'bildirim'|'bolge'>('kurum')
+
+  // Hizmet bölgesi state
+  const [addressData, setAddressData] = useState<Record<string, Record<string, string[]>>>({})
+  const [addrLoaded, setAddrLoaded] = useState(false)
+  const [selIl, setSelIl] = useState('')
+  const [selIlce, setSelIlce] = useState('')
+  const [allowedMahalles, setAllowedMahalles] = useState<string[]>([])
+  const [savingAddr, setSavingAddr] = useState(false)
+
+  useEffect(() => {
+    if (tab === 'bolge' && !addrLoaded) {
+      // Kurum mevcut ayarlarını çek
+      institutionSettingsApi.getAddress().then(data => {
+        setAllowedMahalles(data.allowed_mahalles || [])
+        setSelIl(data.city?.toUpperCase() || '')
+        setSelIlce(data.district?.toUpperCase() || '')
+      }).catch(() => {})
+      // Türkiye adres verisini çek
+      fetch('/turkey-address.json').then(r => r.json()).then((data: any) => {
+        setAddressData(data)
+        setAddrLoaded(true)
+      }).catch(() => {})
+    }
+  }, [tab, addrLoaded])
+
+  const ilList = Object.keys(addressData).sort()
+  const ilceList = selIl ? Object.keys(addressData[selIl] || {}).sort() : []
+  const mahalleList = (selIl && selIlce) ? (addressData[selIl]?.[selIlce] || []).sort() : []
+
+  const toggleMahalle = (m: string) => {
+    setAllowedMahalles(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m])
+  }
+  const toggleAll = () => {
+    if (mahalleList.every(m => allowedMahalles.includes(m))) {
+      setAllowedMahalles(prev => prev.filter(m => !mahalleList.includes(m)))
+    } else {
+      setAllowedMahalles(prev => [...new Set([...prev, ...mahalleList])])
+    }
+  }
+
+  const saveAddr = async () => {
+    setSavingAddr(true)
+    try {
+      await institutionSettingsApi.updateAddress({ allowed_districts: selIlce ? [selIlce] : [], allowed_mahalles: allowedMahalles })
+      toast('Hizmet bölgesi kaydedildi ✅', 'success')
+    } catch (e: any) {
+      toast(e.message || 'Kayıt başarısız oldu', 'error')
+    } finally {
+      setSavingAddr(false)
+    }
+  }
 
   const [notifSettings, setNotifSettings] = useState({
     absence_notify:    true,
@@ -58,6 +110,7 @@ export default function SettingsPage() {
             ['kurum','🏛️ Kurum Bilgileri'],
             ['hesap','🔑 Hesap & Şifre'],
             ['bildirim','🔔 Bildirimler'],
+            ['bolge','📍 Hizmet Bölgesi'],
           ] as const).map(([t,l])=>(
             <button key={t} onClick={()=>setTab(t)}
               className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${tab===t?'bg-white text-gray-900 shadow-sm':'text-gray-400'}`}>
@@ -210,6 +263,77 @@ export default function SettingsPage() {
             </div>
             <Button onClick={()=>toast('Bildirim ayarları kaydedildi ✅','success')} className="mt-4 w-full justify-center">
               💾 Kaydet
+            </Button>
+          </div>
+        )}
+
+        {/* HİZMET BÖLGESİ */}
+        {tab==='bolge' && (
+          <div className="bg-white rounded-xl shadow-sm p-5 space-y-4">
+            <div>
+              <div className="text-sm font-bold text-gray-900 mb-1">📍 Hizmet Bölgesi Ayarı</div>
+              <div className="text-xs text-gray-500">Seçtiğiniz mahalleler kayıt formunda gösterilir. Seçim yapmazsanız tüm mahalleler görünür.</div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">İl</label>
+                <select value={selIl} onChange={e => { setSelIl(e.target.value); setSelIlce(''); setAllowedMahalles([]) }}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
+                  <option value="">Seçin...</option>
+                  {ilList.map(il => <option key={il} value={il}>{il}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">İlçe</label>
+                <select value={selIlce} onChange={e => { setSelIlce(e.target.value); setAllowedMahalles([]) }}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500"
+                  disabled={!selIl}>
+                  <option value="">Seçin...</option>
+                  {ilceList.map(ilce => <option key={ilce} value={ilce}>{ilce}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {selIlce && mahalleList.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase">
+                    Mahalleler ({allowedMahalles.filter(m => mahalleList.includes(m)).length}/{mahalleList.length} seçili)
+                  </label>
+                  <button onClick={toggleAll}
+                    className="text-xs text-green-600 font-semibold hover:underline">
+                    {mahalleList.every(m => allowedMahalles.includes(m)) ? 'Tümünü Kaldır' : 'Tümünü Seç'}
+                  </button>
+                </div>
+                <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                  {mahalleList.map(m => (
+                    <label key={m} className="flex items-center gap-3 px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer">
+                      <input type="checkbox" checked={allowedMahalles.includes(m)} onChange={() => toggleMahalle(m)}
+                        className="w-4 h-4 accent-green-500 flex-shrink-0" />
+                      <span className="text-sm text-gray-700">{m}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!addrLoaded && selIl === '' && (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                <div className="text-2xl mb-2 animate-pulse">⏳</div>
+                Adres verisi yükleniyor...
+              </div>
+            )}
+
+            {allowedMahalles.length > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="text-xs font-semibold text-green-700 mb-1">Seçili mahalleler ({allowedMahalles.length}):</div>
+                <div className="text-xs text-green-600">{allowedMahalles.join(', ')}</div>
+              </div>
+            )}
+
+            <Button onClick={saveAddr} loading={savingAddr} className="w-full justify-center">
+              💾 Hizmet Bölgesini Kaydet
             </Button>
           </div>
         )}

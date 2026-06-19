@@ -159,12 +159,19 @@ export const attendanceApi = {
 // ── PUBLIC ─────────────────────────────────────────────────────────────────────
 export const publicApi = {
   institutionBySlug: (slug: string) =>
-    req<{ id: string; name: string; city: string; is_active: boolean }>(`/public/institution/${slug}`),
+    req<{ id: string; name: string; city: string; district: string; is_active: boolean; allowed_districts: string[] | null; allowed_mahalles: string[] | null }>(`/public/institution/${slug}`),
   submitInstitutionApplication: (data: {
     name: string; city?: string; district: string; address?: string
     responsible_name: string; responsible_phone: string; email?: string
     student_count_estimate?: string; note?: string; kvkk: boolean
   }) => req('/public/institution-applications', { method: 'POST', body: JSON.stringify(data) }),
+}
+
+// ── INSTITUTION SETTINGS ────────────────────────────────────────────────────
+export const institutionSettingsApi = {
+  getAddress: () => req<{ allowed_districts: string[] | null; allowed_mahalles: string[] | null; city: string; district: string }>('/institution/settings/address'),
+  updateAddress: (data: { allowed_districts: string[]; allowed_mahalles: string[] }) =>
+    req('/institution/settings/address', { method: 'PATCH', body: JSON.stringify(data) }),
 }
 
 // ── ASSIGNMENTS ────────────────────────────────────────────────────────────────

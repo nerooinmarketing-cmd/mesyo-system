@@ -1,35 +1,57 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { calcAge } from '@/lib/utils'
+import { publicApi, studentsApi } from '@/lib/api'
 
-const MAHALLELER: Record<string, string[]> = {
-  'Karacihan': ['Çiçek Sok.','Gül Sok.','Lale Sok.','Cumhuriyet Cad.'],
-  'Havzan': ['Çiçek Sok.','Lale Sok.','Gül Sok.'],
-  'Meram': ['Atatürk Cad.','İstiklal Sok.'],
-  'Selçuklu': ['Ankara Cad.','Fatih Sok.'],
-}
-
-type Step = 'form' | 'success' | 'error'
+type Step = 'form' | 'success' | 'error' | 'not-found'
 
 export default function RegisterPage() {
   const { slug } = useParams<{ slug: string }>()
-  const [inst, setInst] = useState<{ name: string; city: string; remaining_quota?: number } | null>(null)
+  const [inst, setInst] = useState<{ name: string; city: string; district: string; allowed_mahalles: string[] | null } | null>(null)
+  const [addressData, setAddressData] = useState<Record<string, Record<string, string[]>>>({})
   const [step, setStep] = useState<Step>('form')
   const [loading, setLoading] = useState(false)
   const [ageWarn, setAgeWarn] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
   const [form, setForm] = useState({
     first_name:'', last_name:'', birth_date:'', gender:'', tc_no:'',
-    city:'Konya', district:'Meram', mahalle:'', sokak:'',
+    city:'', district:'', mahalle:'', sokak:'',
     parent_first_name:'', parent_last_name:'', parent_phone:'', parent_phone2:'',
     address:'', notes:'', kvkk:false
   })
   const [errors, setErrors] = useState<Record<string,string>>({})
 
   useEffect(() => {
-    // API'den kurum bilgisini çek
-    // Demo için
-    setInst({ name: 'Karacihan Mescidi', city: 'Konya', remaining_quota: 84 })
+    if (!slug) return
+    Promise.all([
+      publicApi.institutionBySlug(slug),
+      fetch('/turkey-address.json').then(r => r.json()),
+    ]).then(([instData, addrData]) => {
+      setInst({
+        name: instData.name,
+        city: instData.city,
+        district: instData.district,
+        allowed_mahalles: instData.allowed_mahalles,
+      })
+      setAddressData(addrData)
+      // Kurumun şehir/ilçesini form'a doldur
+      setForm(p => ({
+        ...p,
+        city: instData.city || 'Konya',
+        district: instData.district || '',
+      }))
+    }).catch(() => setStep('not-found'))
   }, [slug])
+
+  // Kurumun şehir/ilçesine göre mahalle listesi
+  const cityKey = (inst?.city || '').toUpperCase()
+  const districtKey = (inst?.district || '').toUpperCase()
+  const allMahalles: string[] = addressData[cityKey]?.[districtKey] || []
+
+  // Eğer kurum belirli mahalleler seçmişse sadece onları göster, yoksa tümünü
+  const mahalleList = (inst?.allowed_mahalles && inst.allowed_mahalles.length > 0)
+    ? allMahalles.filter(m => inst.allowed_mahalles!.includes(m))
+    : allMahalles
 
   const f = (k: string, v: string) => {
     setForm(p => ({ ...p, [k]: v }))
@@ -62,13 +84,17 @@ export default function RegisterPage() {
   }
 
   const submit = async () => {
-    if (!validate()) return
+    if (!validate() || !slug) return
     setLoading(true)
     try {
-      // await studentsApi.publicRegister(slug!, { ...form, registration_source: 'form', status: 'pending' })
+      await studentsApi.publicRegister(slug, { ...form, registration_source: 'form', status: 'pending' } as any)
       setStep('success')
-    } catch { setStep('error') }
-    setLoading(false)
+    } catch (e: any) {
+      setErrorMsg(e.message || 'Başvuru gönderilirken bir hata oluştu')
+      setStep('error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const resetForm = () => setForm({
@@ -93,12 +119,22 @@ export default function RegisterPage() {
     </div>
   )
 
+  if (step === 'not-found') return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-8 text-center max-w-sm w-full">
+        <div className="text-4xl mb-4">🔍</div>
+        <h1 className="text-lg font-bold text-gray-900 mb-2">Kurum Bulunamadı</h1>
+        <p className="text-gray-500 text-sm">Bu kayıt linki geçersiz veya kurumun paneli şu anda aktif değil. Lütfen kurumla iletişime geçin.</p>
+      </div>
+    </div>
+  )
+
   if (step === 'error') return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 text-center max-w-sm w-full">
         <div className="text-4xl mb-4">⚠️</div>
         <h1 className="text-lg font-bold text-gray-900 mb-2">Bir hata oluştu</h1>
-        <p className="text-gray-500 text-sm mb-4">Lütfen tekrar deneyin.</p>
+        <p className="text-gray-500 text-sm mb-4">{errorMsg || 'Lütfen tekrar deneyin.'}</p>
         <button onClick={() => setStep('form')} className="px-4 py-2 bg-green-500 text-white font-bold rounded-lg text-sm">Tekrar Dene</button>
       </div>
     </div>
@@ -111,14 +147,6 @@ export default function RegisterPage() {
         <div className="text-3xl mb-2">📚</div>
         <div className="text-white font-bold text-xl">{inst?.name || 'Yükleniyor...'}</div>
         <div className="text-white/60 text-sm mt-1">Öğrenci Kayıt Formu</div>
-
-        {/* Kalan Kontenjan */}
-        {typeof inst?.remaining_quota === 'number' && (
-          <div className="absolute top-4 right-4 bg-white/15 border border-white/25 rounded-xl px-3 py-2 text-center backdrop-blur-sm">
-            <div className="text-white/60 text-[10px] font-semibold uppercase">Kalan Kontenjan</div>
-            <div className="text-white font-extrabold text-lg leading-none mt-0.5">{inst.remaining_quota}</div>
-          </div>
-        )}
       </div>
 
       <div className="max-w-lg mx-auto px-4 -mt-2">
@@ -199,24 +227,20 @@ export default function RegisterPage() {
 
           <div className="mb-3">
             <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Mahalle *</label>
-            <select value={form.mahalle} onChange={e => { f('mahalle',e.target.value); f('sokak','') }}
+            <select value={form.mahalle} onChange={e => { f('mahalle',e.target.value) }}
               className={`w-full px-3 py-2.5 border-[1.5px] rounded-lg text-sm outline-none transition-all ${errors.mahalle?'border-red-400':'border-gray-200 focus:border-green-500'}`}>
               <option value="">Mahalle seçin</option>
-              {Object.keys(MAHALLELER).map(m => <option key={m} value={m}>{m}</option>)}
+              {mahalleList.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
             {errors.mahalle && <p className="text-xs text-red-500 mt-1">{errors.mahalle}</p>}
           </div>
 
-          {form.mahalle && (
-            <div className="mb-3">
-              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Sokak</label>
-              <select value={form.sokak} onChange={e => f('sokak',e.target.value)}
-                className="w-full px-3 py-2.5 border-[1.5px] border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
-                <option value="">Sokak seçin (opsiyonel)</option>
-                {(MAHALLELER[form.mahalle]||[]).map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          )}
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Sokak / Cadde (opsiyonel)</label>
+            <input value={form.sokak} onChange={e => f('sokak', e.target.value)}
+              placeholder="Sokak veya cadde adı"
+              className="w-full px-3 py-2.5 border-[1.5px] border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+          </div>
 
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Kapı No / Açık Adres (opsiyonel)</label>
