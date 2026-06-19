@@ -57,11 +57,17 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
   const priorityRoutes = [
     '/admin/students',
     '/admin/registrations',
+    '/admin/seasons',
     '/admin/classrooms',
     '/admin/teachers',
-    '/admin/seasons',
-    '/admin/attendance',
     '/admin/assignments',
+    '/admin/attendance',
+    '/admin/calendar',
+    '/admin/game',
+    '/admin/notifications',
+    '/admin/announcements',
+    '/admin/assets',
+    '/admin/accounting',
   ]
 
   // Dinamik modüllerden öncelikli olanları sıralı al

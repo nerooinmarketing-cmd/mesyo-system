@@ -75,6 +75,9 @@ export const seasonsApi = {
   list: () => req<Season[]>('/seasons'),
   create: (data: { name: string; year: number }) =>
     req<Season>('/seasons', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, name: string) =>
+    req<Season>(`/seasons/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  delete: (id: string) => req(`/seasons/${id}`, { method: 'DELETE' }),
   archive: (id: string) =>
     req<Season>(`/seasons/${id}/archive`, { method: 'POST' }),
 }
