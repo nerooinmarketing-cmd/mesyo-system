@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { calcAge } from '@/lib/utils'
+import { publicApi, studentsApi } from '@/lib/api'
 
 const MAHALLELER: Record<string, string[]> = {
   'Karacihan': ['Çiçek Sok.','Gül Sok.','Lale Sok.','Cumhuriyet Cad.'],
@@ -9,14 +10,15 @@ const MAHALLELER: Record<string, string[]> = {
   'Selçuklu': ['Ankara Cad.','Fatih Sok.'],
 }
 
-type Step = 'form' | 'success' | 'error'
+type Step = 'form' | 'success' | 'error' | 'not-found'
 
 export default function RegisterPage() {
   const { slug } = useParams<{ slug: string }>()
-  const [inst, setInst] = useState<{ name: string; city: string; remaining_quota?: number } | null>(null)
+  const [inst, setInst] = useState<{ name: string; city: string } | null>(null)
   const [step, setStep] = useState<Step>('form')
   const [loading, setLoading] = useState(false)
   const [ageWarn, setAgeWarn] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
   const [form, setForm] = useState({
     first_name:'', last_name:'', birth_date:'', gender:'', tc_no:'',
     city:'Konya', district:'Meram', mahalle:'', sokak:'',
@@ -26,9 +28,10 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string,string>>({})
 
   useEffect(() => {
-    // API'den kurum bilgisini çek
-    // Demo için
-    setInst({ name: 'Karacihan Mescidi', city: 'Konya', remaining_quota: 84 })
+    if (!slug) return
+    publicApi.institutionBySlug(slug)
+      .then(data => setInst({ name: data.name, city: data.city }))
+      .catch(() => setStep('not-found'))
   }, [slug])
 
   const f = (k: string, v: string) => {
@@ -62,13 +65,17 @@ export default function RegisterPage() {
   }
 
   const submit = async () => {
-    if (!validate()) return
+    if (!validate() || !slug) return
     setLoading(true)
     try {
-      // await studentsApi.publicRegister(slug!, { ...form, registration_source: 'form', status: 'pending' })
+      await studentsApi.publicRegister(slug, { ...form, registration_source: 'form', status: 'pending' } as any)
       setStep('success')
-    } catch { setStep('error') }
-    setLoading(false)
+    } catch (e: any) {
+      setErrorMsg(e.message || 'Başvuru gönderilirken bir hata oluştu')
+      setStep('error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const resetForm = () => setForm({
@@ -93,12 +100,22 @@ export default function RegisterPage() {
     </div>
   )
 
+  if (step === 'not-found') return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-8 text-center max-w-sm w-full">
+        <div className="text-4xl mb-4">🔍</div>
+        <h1 className="text-lg font-bold text-gray-900 mb-2">Kurum Bulunamadı</h1>
+        <p className="text-gray-500 text-sm">Bu kayıt linki geçersiz veya kurumun paneli şu anda aktif değil. Lütfen kurumla iletişime geçin.</p>
+      </div>
+    </div>
+  )
+
   if (step === 'error') return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 text-center max-w-sm w-full">
         <div className="text-4xl mb-4">⚠️</div>
         <h1 className="text-lg font-bold text-gray-900 mb-2">Bir hata oluştu</h1>
-        <p className="text-gray-500 text-sm mb-4">Lütfen tekrar deneyin.</p>
+        <p className="text-gray-500 text-sm mb-4">{errorMsg || 'Lütfen tekrar deneyin.'}</p>
         <button onClick={() => setStep('form')} className="px-4 py-2 bg-green-500 text-white font-bold rounded-lg text-sm">Tekrar Dene</button>
       </div>
     </div>
@@ -111,14 +128,6 @@ export default function RegisterPage() {
         <div className="text-3xl mb-2">📚</div>
         <div className="text-white font-bold text-xl">{inst?.name || 'Yükleniyor...'}</div>
         <div className="text-white/60 text-sm mt-1">Öğrenci Kayıt Formu</div>
-
-        {/* Kalan Kontenjan */}
-        {typeof inst?.remaining_quota === 'number' && (
-          <div className="absolute top-4 right-4 bg-white/15 border border-white/25 rounded-xl px-3 py-2 text-center backdrop-blur-sm">
-            <div className="text-white/60 text-[10px] font-semibold uppercase">Kalan Kontenjan</div>
-            <div className="text-white font-extrabold text-lg leading-none mt-0.5">{inst.remaining_quota}</div>
-          </div>
-        )}
       </div>
 
       <div className="max-w-lg mx-auto px-4 -mt-2">
