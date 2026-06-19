@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { Button, Modal, useToast } from '@/components/ui'
 import * as XLSX from 'xlsx'
+import { accountingApi } from '@/lib/api'
 
 // ─── TİPLER ──────────────────────────────────────────────────────────────────
 type EntryType = 'gelir' | 'gider' | 'transfer'
@@ -218,7 +219,7 @@ function IslemModal({ open, onClose, onAdd, kasalar }: {open:boolean; onClose:()
         <select value={kasaId} onChange={e=>setKasaId(e.target.value)}
           className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
           <option value="">Kasa seçin</option>
-          {kasalar.map(k=><option key={k.id} value={k.id}>{k.name} ({tl(calcBalance(k.id,INIT_ENTRIES))})</option>)}
+          {kasalar.map(k=><option key={k.id} value={k.id}>{k.name}</option>)}
         </select>
       </div>
       {type==='transfer' && (
@@ -278,15 +279,58 @@ function IslemModal({ open, onClose, onAdd, kasalar }: {open:boolean; onClose:()
   )
 }
 
+// Backend → frontend format dönüşümü
+function normalizeKasa(k: any): Kasa {
+  return { id: k.id, name: k.name, color: k.color, note: k.note, created_at: k.created_at }
+}
+function normalizeEntry(e: any): Entry {
+  return {
+    id: e.id,
+    type: e.entry_type as EntryType,
+    category: e.category as Category,
+    amount: parseFloat(e.amount),
+    description: e.description,
+    date: e.entry_date,
+    kasaId: e.cash_register_id,
+    toKasaId: e.to_cash_register_id || undefined,
+    note: e.note || undefined,
+    donor: e.donor_name || undefined,
+  }
+}
+
 // ─── ANA SAYFA ────────────────────────────────────────────────────────────────
 export default function AccountingPage() {
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('kasalar')
-  const [kasalar, setKasalar] = useState<Kasa[]>(INIT_KASALAR)
-  const [entries, setEntries] = useState<Entry[]>(INIT_ENTRIES)
+  const [kasalar, setKasalar] = useState<Kasa[]>([])
+  const [entries, setEntries] = useState<Entry[]>([])
+  const [loading, setLoading] = useState(true)
   const [addKasaOpen, setAddKasaOpen] = useState(false)
   const [addIslemOpen, setAddIslemOpen] = useState(false)
   const [detailKasaId, setDetailKasaId] = useState<string|null>(null)
+
+  // Veri yükleme
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      try {
+        const [regs, ents] = await Promise.all([
+          accountingApi.listRegisters(),
+          accountingApi.listEntries(),
+        ])
+        if (cancelled) return
+        setKasalar(regs.map(normalizeKasa))
+        setEntries(ents.map(normalizeEntry))
+      } catch (e: any) {
+        if (!cancelled) toast(e.message || 'Veriler yüklenemedi', 'error')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
   const [selKasa, setSelKasa] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [rptStart, setRptStart] = useState(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return d.toISOString().split('T')[0]})
@@ -334,11 +378,27 @@ export default function AccountingPage() {
   const gelirCats = (Object.entries(CAT) as [Category,typeof CAT[Category]][]).filter(([,v])=>v.type==='gelir')
   const giderCats = (Object.entries(CAT) as [Category,typeof CAT[Category]][]).filter(([,v])=>v.type==='gider')
 
-  const delKasa = (id:string) => {
-    if (entries.some(e=>e.kasaId===id||e.toKasaId===id)) { toast('Bu kasada işlem var — silinemez','error'); return }
+  const delKasa = async (id:string) => {
     if (!confirm('Kasayı silmek istiyor musunuz?')) return
-    setKasalar(p=>p.filter(k=>k.id!==id)); toast('Kasa silindi','info')
+    try {
+      await accountingApi.deleteRegister(id)
+      setKasalar(p=>p.filter(k=>k.id!==id))
+      toast('Kasa silindi','info')
+    } catch (e: any) {
+      toast(e.message || 'Kasa silinemedi', 'error')
+    }
   }
+
+  if (loading) return (
+    <AdminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">⏳</div>
+          <p className="text-sm">Muhasebe verileri yükleniyor...</p>
+        </div>
+      </div>
+    </AdminLayout>
+  )
 
   return (
     <AdminLayout>
@@ -572,7 +632,7 @@ export default function AccountingPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3">
-                              <button onClick={()=>{setEntries(p=>p.filter(x=>x.id!==e.id));toast('Silindi','info')}}
+                              <button onClick={async ()=>{try{await accountingApi.deleteEntry(String(e.id));setEntries(p=>p.filter(x=>x.id!==e.id));toast('Silindi','info')}catch(err:any){toast(err.message||'Silinemedi','error')}}}
                                 className="text-gray-300 hover:text-red-400 text-xl leading-none">×</button>
                             </td>
                           </tr>
@@ -733,9 +793,31 @@ export default function AccountingPage() {
 
       {/* Modaller */}
       <KasaModal open={addKasaOpen} onClose={()=>setAddKasaOpen(false)}
-        onAdd={k=>{setKasalar(p=>[...p,k]);toast('Kasa oluşturuldu ✅','success')}}/>
+        onAdd={async k=>{
+          try {
+            const created = await accountingApi.createRegister({name:k.name,color:k.color,note:k.note})
+            setKasalar(p=>[...p,normalizeKasa(created)])
+            toast('Kasa oluşturuldu ✅','success')
+          } catch(e:any){ toast(e.message||'Kasa eklenemedi','error') }
+        }}/>
       <IslemModal open={addIslemOpen} onClose={()=>setAddIslemOpen(false)} kasalar={kasalar}
-        onAdd={e=>{setEntries(p=>[e,...p]);toast('Kayıt eklendi ✅','success')}}/>
+        onAdd={async e=>{
+          try {
+            const created = await accountingApi.createEntry({
+              cash_register_id: e.kasaId,
+              to_cash_register_id: e.toKasaId,
+              entry_type: e.type,
+              category: e.category,
+              amount: e.amount,
+              description: e.description,
+              donor_name: e.donor,
+              entry_date: e.date,
+              note: e.note,
+            })
+            setEntries(p=>[normalizeEntry(created),...p])
+            toast('Kayıt eklendi ✅','success')
+          } catch(err:any){ toast(err.message||'Kayıt eklenemedi','error') }
+        }}/>
     </AdminLayout>
   )
 }

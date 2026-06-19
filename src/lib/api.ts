@@ -245,3 +245,31 @@ export const assetsApi = {
     req<any>(`/assets/${assetId}/maintenance-logs`, { method: 'POST', body: JSON.stringify(data) }),
 }
 
+// ── ACCOUNTING (ön muhasebe) ────────────────────────────────────────────────
+export const accountingApi = {
+  // Kasalar
+  listRegisters: () => req<any[]>('/accounting/registers'),
+  createRegister: (data: { name: string; color: string; note?: string }) =>
+    req<any>('/accounting/registers', { method: 'POST', body: JSON.stringify(data) }),
+  updateRegister: (id: string, data: Record<string, any>) =>
+    req<any>(`/accounting/registers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteRegister: (id: string) => req(`/accounting/registers/${id}`, { method: 'DELETE' }),
+
+  // Hareketler
+  listEntries: (params?: { start?: string; end?: string; register_id?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.start) q.set('start', params.start)
+    if (params?.end) q.set('end', params.end)
+    if (params?.register_id) q.set('register_id', params.register_id)
+    const qs = q.toString()
+    return req<any[]>(`/accounting/entries${qs ? '?' + qs : ''}`)
+  },
+  createEntry: (data: {
+    cash_register_id: string; to_cash_register_id?: string
+    entry_type: string; category: string; amount: number
+    description: string; donor_name?: string; entry_date: string; note?: string
+  }) => req<any>('/accounting/entries', { method: 'POST', body: JSON.stringify(data) }),
+  updateEntry: (id: string, data: Record<string, any>) =>
+    req<any>(`/accounting/entries/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteEntry: (id: string) => req(`/accounting/entries/${id}`, { method: 'DELETE' }),
+}
