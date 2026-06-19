@@ -52,22 +52,51 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
 
   // Dashboard her zaman var
   const dashItem = { to:'/admin/dashboard', icon:LayoutDashboard, label:'Genel Bakış', badge:false, moduleId:undefined }
-  const coreItems = [
-    { to:'/admin/seasons',    icon:Archive,   label:'Sezonlar', badge:false, moduleId:undefined },
-    { to:'/admin/classrooms', icon:School,    label:'Sınıflar', badge:false, moduleId:undefined },
-    { to:'/admin/teachers',   icon:Users,     label:'Öğretmenler', badge:false, moduleId:undefined },
+
+  // Sabit öncelikli sayfalar — her zaman bu sırada üstte görünür
+  const priorityRoutes = [
+    '/admin/students',
+    '/admin/registrations',
+    '/admin/classrooms',
+    '/admin/teachers',
+    '/admin/seasons',
+    '/admin/attendance',
+    '/admin/assignments',
   ]
-  const navItems = [
-    dashItem,
-    ...activeNavItems.map(m => ({
+
+  // Dinamik modüllerden öncelikli olanları sıralı al
+  const priorityItems = priorityRoutes.map(route => {
+    const mod = activeNavItems.find(m => m.route === route)
+    if (mod) return {
+      to: route,
+      icon: ICON_MAP[route] || LayoutDashboard,
+      label: mod.name.replace(' Yönetimi','').replace(' Takibi',''),
+      badge: mod.id === 'registrations',
+      moduleId: mod.id,
+    }
+    // Modül aktif değilse bile Sınıflar, Öğretmenler, Sezonlar her zaman göster
+    if (['/admin/classrooms','/admin/teachers','/admin/seasons'].includes(route)) return {
+      to: route,
+      icon: ICON_MAP[route] || LayoutDashboard,
+      label: route === '/admin/classrooms' ? 'Sınıflar' : route === '/admin/teachers' ? 'Öğretmenler' : 'Sezonlar',
+      badge: false,
+      moduleId: undefined,
+    }
+    return null
+  }).filter(Boolean) as any[]
+
+  // Geri kalan dinamik modüller (öncelikli listede olmayanlar)
+  const otherItems = activeNavItems
+    .filter(m => m.route && !priorityRoutes.includes(m.route || ''))
+    .map(m => ({
       to: m.route || '',
       icon: ICON_MAP[m.route || ''] || LayoutDashboard,
       label: m.name.replace(' Yönetimi','').replace(' Takibi',''),
-      badge: m.id === 'registrations',
+      badge: false,
       moduleId: m.id,
-    })).filter(i => i.to && !coreItems.find(c => c.to === i.to)),
-    ...coreItems,
-  ]
+    })).filter(i => i.to)
+
+  const navItems = [dashItem, ...priorityItems, ...otherItems]
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
