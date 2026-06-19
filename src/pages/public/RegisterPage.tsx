@@ -7,7 +7,7 @@ type Step = 'form' | 'success' | 'error' | 'not-found'
 
 export default function RegisterPage() {
   const { slug } = useParams<{ slug: string }>()
-  const [inst, setInst] = useState<{ name: string; city: string; district: string; allowed_mahalles: string[] | null } | null>(null)
+  const [inst, setInst] = useState<{ name: string; city: string; district: string; allowed_districts: string[] | null; allowed_mahalles: string[] | null } | null>(null)
   const [addressData, setAddressData] = useState<Record<string, Record<string, string[]>>>({})
   const [step, setStep] = useState<Step>('form')
   const [loading, setLoading] = useState(false)
@@ -31,6 +31,7 @@ export default function RegisterPage() {
         name: instData.name,
         city: instData.city,
         district: instData.district,
+        allowed_districts: instData.allowed_districts,
         allowed_mahalles: instData.allowed_mahalles,
       })
       setAddressData(addrData)
@@ -44,11 +45,16 @@ export default function RegisterPage() {
   }, [slug])
 
   // Kurumun şehir/ilçesine göre mahalle listesi
+  // allowed_districts varsa onu kullan, yoksa kurumun district'ini kullan
   const cityKey = (inst?.city || '').toUpperCase()
-  const districtKey = (inst?.district || '').toUpperCase()
+  const districtKey = (
+    inst?.allowed_districts && inst.allowed_districts.length > 0
+      ? inst.allowed_districts[0]
+      : (inst?.district || '')
+  ).toUpperCase()
   const allMahalles: string[] = addressData[cityKey]?.[districtKey] || []
 
-  // Eğer kurum belirli mahalleler seçmişse sadece onları göster, yoksa tümünü
+  // allowed_mahalles seçilmişse filtrele, yoksa tümünü göster
   const mahalleList = (inst?.allowed_mahalles && inst.allowed_mahalles.length > 0)
     ? allMahalles.filter(m => inst.allowed_mahalles!.includes(m))
     : allMahalles
