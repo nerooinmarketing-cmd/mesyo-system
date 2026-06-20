@@ -12,7 +12,7 @@ type Tab = 'kasalar' | 'hareketler' | 'rapor'
 interface Kasa { id:string; name:string; color:string; note?:string; created_at:string }
 interface Entry {
   id:number; type:EntryType; category:Category; amount:number
-  description:string; date:string; kasaId:string; toKasaId?:string; note?:string; donor?:string
+  description:string; date:string; kasaId:string; toKasaId?:string; note?:string; donor?:string; receipt_url?:string
 }
 
 const CAT: Record<Category,{label:string;icon:string;type:'gelir'|'gider';color:string}> = {
@@ -632,8 +632,30 @@ export default function AccountingPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3">
-                              <button onClick={async ()=>{try{await accountingApi.deleteEntry(String(e.id));setEntries(p=>p.filter(x=>x.id!==e.id));toast('Silindi','info')}catch(err:any){toast(err.message||'Silinemedi','error')}}}
-                                className="text-gray-300 hover:text-red-400 text-xl leading-none">×</button>
+                              <div className="flex items-center gap-2">
+                                {e.receipt_url ? (
+                                  <a href={e.receipt_url} target="_blank" rel="noreferrer"
+                                    className="text-lg hover:scale-110 transition-transform" title="Fişi Gör">📄</a>
+                                ) : (
+                                  <label className="cursor-pointer text-gray-300 hover:text-blue-400 text-lg transition-colors" title="Fiş Ekle">
+                                    📷
+                                    <input type="file" accept="image/*,application/pdf" className="hidden"
+                                      onChange={async (ev) => {
+                                        const file = ev.target.files?.[0]
+                                        if (!file) return
+                                        try {
+                                          const res = await accountingApi.uploadReceipt(String(e.id), file)
+                                          setEntries(p => p.map(x => x.id === e.id ? { ...x, receipt_url: res.receipt_url } : x))
+                                          toast('Fiş yüklendi ✅', 'success')
+                                        } catch (err: any) {
+                                          toast(err.message || 'Yükleme başarısız', 'error')
+                                        }
+                                      }} />
+                                  </label>
+                                )}
+                                <button onClick={async ()=>{try{await accountingApi.deleteEntry(String(e.id));setEntries(p=>p.filter(x=>x.id!==e.id));toast('Silindi','info')}catch(err:any){toast(err.message||'Silinemedi','error')}}}
+                                  className="text-gray-300 hover:text-red-400 text-xl leading-none">×</button>
+                              </div>
                             </td>
                           </tr>
                         )

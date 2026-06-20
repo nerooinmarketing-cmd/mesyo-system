@@ -283,6 +283,18 @@ export const accountingApi = {
   updateEntry: (id: string, data: Record<string, any>) =>
     req<any>(`/accounting/entries/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteEntry: (id: string) => req(`/accounting/entries/${id}`, { method: 'DELETE' }),
+  uploadReceipt: async (entryId: string, file: File) => {
+    const token = localStorage.getItem('mesyo_token')
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`/api/accounting/entries/${entryId}/receipt`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    })
+    if (!res.ok) throw new Error('Yükleme başarısız')
+    return res.json()
+  },
 }
 
 // ── GAME (Kubbeler Yarışıyor) ──────────────────────────────────────────────
