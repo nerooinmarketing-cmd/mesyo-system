@@ -47,16 +47,19 @@ export default function GameAdminPage() {
     async function load() {
       try {
         const [cal, qs] = await Promise.all([gameApi.calendar(), gameApi.questions()])
-        if (!cancelled) { setGames(cal); setQuestions(qs) }
+        if (!cancelled) {
+          setGames(cal || [])
+          setQuestions(qs || [])
+        }
       } catch (e: any) {
-        toast(e.message || 'Veriler yüklenemedi', 'error')
+        if (!cancelled) console.error('Game load error:', e)
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
     load()
     return () => { cancelled = true }
-  }, [])
+  }, []) // eslint-disable-line
 
   const daysInMonth = getDaysInMonth(year, month)
   const firstDay = getFirstDayOfMonth(year, month)
