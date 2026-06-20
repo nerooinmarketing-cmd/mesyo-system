@@ -309,7 +309,23 @@ export default function GameAdminPage() {
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
                 <div className="text-xs font-bold text-blue-700 mb-2">📱 WhatsApp Mesajı Gönder</div>
                 <a href={waLink('', getWhatsAppMsg(selGame))} target="_blank" rel="noreferrer"
-                  onClick={e => { e.preventDefault(); navigator.clipboard.writeText(getWhatsAppMsg(selGame)); toast('Mesaj kopyalandı! WhatsApp\'tan yapıştırın 📋', 'success') }}
+                  onClick={e => {
+                    e.preventDefault()
+                    const msg = getWhatsAppMsg(selGame)
+                    try {
+                      if (navigator.clipboard) {
+                        navigator.clipboard.writeText(msg)
+                      } else {
+                        const ta = document.createElement('textarea')
+                        ta.value = msg
+                        document.body.appendChild(ta)
+                        ta.select()
+                        document.execCommand('copy')
+                        document.body.removeChild(ta)
+                      }
+                      toast('Mesaj kopyalandı! WhatsApp\'tan yapıştırın 📋', 'success')
+                    } catch { toast('Kopyalanamadı, manuel kopyalayın', 'error') }
+                  }}
                   className="block w-full py-2 bg-[#25D366] hover:bg-[#128C7E] text-white text-xs font-bold rounded-lg text-center transition-colors">
                   📋 Mesajı Kopyala
                 </a>
