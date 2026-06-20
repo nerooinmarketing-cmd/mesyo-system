@@ -287,21 +287,8 @@ export const accountingApi = {
 
 // ── GAME (Kubbeler Yarışıyor) ──────────────────────────────────────────────
 export const gameApi = {
-  // Sorular
-  questions: () => req<any[]>('/game/questions'),
-  createQuestion: (data: any) => req<any>('/game/questions', { method: 'POST', body: JSON.stringify(data) }),
-  deleteQuestion: (id: string) => req(`/game/questions/${id}`, { method: 'DELETE' }),
-
-  // Takvim
   calendar: () => req<any[]>('/game/calendar'),
   createDailyGame: (data: any) => req<any>('/game/calendar', { method: 'POST', body: JSON.stringify(data) }),
   deleteDailyGame: (id: string) => req(`/game/calendar/${id}`, { method: 'DELETE' }),
   participants: (gameId: string) => req<any>(`/game/calendar/${gameId}/participants`),
-
-  // Public (auth gerektirmez)
-  getGame: (gameId: string) => fetch(`/api/game/play/${gameId}`).then(r => r.json()),
-  submitAnswer: (gameId: string, data: any) =>
-    fetch(`/api/game/play/${gameId}/answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => r.json()),
-  leaderboard: (gameId: string) =>
-    fetch(`/api/game/play/${gameId}/leaderboard`).then(r => r.json()),
 }
