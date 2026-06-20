@@ -261,11 +261,10 @@ export default function GamePlayPage() {
         })}
       </div>
 
-      {/* Cevap sonucu */}
       {showAns && (
         <div className={cn('mt-4 rounded-2xl p-4 text-center font-bold text-base flex-shrink-0 shadow-sm',
-          chosen && chosen!=='__' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-600 border border-red-200')}>
-          {chosen === '__' ? '⏰ Süre Doldu!' : `✅ Seçildi: ${chosen}`}
+          chosen && chosen!=='__' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-red-100 text-red-600 border border-red-200')}>
+          {chosen === '__' ? '⏰ Süre Doldu! Sonraki soruya geçiliyor...' : `⏳ Cevap kaydedildi, devam ediliyor...`}
         </div>
       )}
     </div>
@@ -320,6 +319,27 @@ export default function GamePlayPage() {
             {finalResult.parent_name && finalResult.parent_name !== 'Veli' && <div className="text-gray-400 text-sm">{finalResult.parent_name}</div>}
           </div>
         </div>
+
+        {finalResult.breakdown && finalResult.breakdown.length > 0 && (
+          <div className="bg-white rounded-3xl shadow-xl p-5 mb-4">
+            <div className="text-sm font-bold text-gray-700 mb-3">Sonuçlar</div>
+            <div className="space-y-2">
+              {finalResult.breakdown.map((b: any, i: number) => (
+                <div key={i} className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl', b.is_correct?'bg-green-50':'bg-red-50')}>
+                  <div className={cn('w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0', b.is_correct?'bg-green-500 text-white':'bg-red-400 text-white')}>
+                    {b.is_correct?'✓':'✗'}
+                  </div>
+                  <div className="flex-1 text-xs">
+                    <span className="text-gray-500">{b.player==='child'?'👦 Öğrenci':'👨 Veli'}</span>
+                    <span className={cn('ml-2 font-bold', b.is_correct?'text-green-600':'text-red-500')}>{b.is_correct?'Doğru':'Yanlış'}</span>
+                  </div>
+                  <div className="font-bold text-gray-700 text-sm">+{b.score}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <button onClick={loadLB}
           className="w-full py-5 bg-[#1B4332] hover:bg-green-800 text-white font-extrabold text-lg rounded-2xl shadow-lg transition-colors">
           🏆 Puan Tablosunu Gör

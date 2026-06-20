@@ -28,7 +28,6 @@ import QRRegisterPage from '@/pages/admin/QRRegisterPage'
 import ProgressReportPage from '@/pages/admin/ProgressReportPage'
 import AccountingPage from '@/pages/admin/AccountingPage'
 import GameGuidePage from '@/pages/admin/GameGuidePage'
-import GamePage from '@/pages/public/GamePage'
 import ScorePage from '@/pages/public/ScorePage'
 import GameAdminPage from '@/pages/admin/GameAdminPage'
 
@@ -126,7 +125,6 @@ export default function App() {
             <Route path="/teacher/yoklama" element={<Guard roles={['teacher']}><YoklamaPage /></Guard>} />
             <Route path="/teacher/odev"    element={<Guard roles={['teacher']}><OdevPage /></Guard>} />
 
-            <Route path="/oyun/:slug"        element={<GamePage />} />
             <Route path="/skor/:slug"         element={<ScorePage />} />
             <Route path="/kayit/:slug" element={<RegisterPage />} />
             <Route path="/oyun/:gameId" element={<GamePlayPage />} />
