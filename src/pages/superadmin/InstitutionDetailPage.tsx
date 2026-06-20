@@ -4,15 +4,14 @@ import { SuperadminLayout } from '@/components/layout/SuperadminLayout'
 import { Alert, useToast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { Institution } from '@/types'
-import { superadminApi } from '@/lib/api'
+import { superadminApi, paymentsApi } from '@/lib/api'
 
 type Tab = 'genel' | 'abonelik' | 'moduller' | 'ogrenciler' | 'ogretmenler' | 'ayarlar'
 
-const SUB_PLANS = [
-  { id:'trial', label:'Deneme (Ücretsiz)', days:30 },
-  { id:'basic', label:'Temel — Yıllık 1.500₺', months:12 },
-  { id:'pro', label:'Pro — Yıllık 3.000₺', months:12 },
-]
+const PAKET_FIYATLARI = {
+  giris: { tutar: 3000, kdv: 600, toplam: 3600, label: '🎉 Giriş Bedeli — 3.000 + KDV = 3.600 ₺' },
+  yillik: { tutar: 1000, kdv: 200, toplam: 1200, label: '📅 Yıllık Yenileme — 1.000 + KDV = 1.200 ₺' },
+}
 
 export default function InstitutionDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -32,6 +31,11 @@ export default function InstitutionDetailPage() {
   const [subStatus, setSubStatus] = useState('trial')
   const [subExpiry, setSubExpiry] = useState('')
   const [studentLimit, setStudentLimit] = useState(0)
+  const [payments, setPayments] = useState<any[]>([])
+  const [paymentsLoaded, setPaymentsLoaded] = useState(false)
+  const [payModal, setPayModal] = useState(false)
+  const [payForm, setPayForm] = useState({ paket: 'giris', tutar: 3600, not: '', markPaid: true })
+  const [paying, setPaying] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const [cityInput, setCityInput] = useState('')
   const [districtInput, setDistrictInput] = useState('')
@@ -79,7 +83,10 @@ export default function InstitutionDetailPage() {
     if (tab === 'ogretmenler' && !teachersLoaded) {
       superadminApi.institutionTeachers(id).then(d => { setTeachers(d); setTeachersLoaded(true) }).catch(() => setTeachersLoaded(true))
     }
-  }, [tab, id, studentsLoaded, teachersLoaded])
+    if (tab === 'abonelik' && !paymentsLoaded) {
+      paymentsApi.institutionPayments(id).then(d => { setPayments(d); setPaymentsLoaded(true) }).catch(() => setPaymentsLoaded(true))
+    }
+  }, [tab, id, studentsLoaded, teachersLoaded, paymentsLoaded])
 
   const saveSubscription = async () => {
     if (!id) return
@@ -240,56 +247,144 @@ export default function InstitutionDetailPage() {
 
       {/* ABONELİK */}
       {tab === 'abonelik' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <div className="text-sm font-bold text-gray-900 mb-4">💳 Abonelik Yönetimi</div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Durum yönetimi */}
+            <div className="bg-white rounded-xl shadow-sm p-5">
+              <div className="text-sm font-bold text-gray-900 mb-4">💳 Abonelik Durumu</div>
 
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Abonelik Durumu</label>
-              <select value={subStatus} onChange={e => setSubStatus(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
-                <option value="trial">🔵 Deneme</option>
-                <option value="active">✅ Aktif</option>
-                <option value="expired">⚠️ Süresi Doldu</option>
-                <option value="cancelled">❌ İptal</option>
-              </select>
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Durum</label>
+                <select value={subStatus} onChange={e => setSubStatus(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
+                  <option value="trial">🔵 Deneme</option>
+                  <option value="active">✅ Aktif</option>
+                  <option value="expired">⚠️ Süresi Doldu</option>
+                  <option value="cancelled">❌ İptal</option>
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Bitiş Tarihi</label>
+                <input type="date" value={subExpiry} onChange={e => setSubExpiry(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+              </div>
+
+              <div className="mb-5">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Öğrenci Limiti</label>
+                <input type="number" value={studentLimit} onChange={e => setStudentLimit(+e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+              </div>
+
+              <button onClick={saveSubscription} disabled={saving}
+                className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg text-sm disabled:opacity-50 transition-colors">
+                {saving ? '⏳ Kaydediliyor...' : saved ? '✅ Kaydedildi!' : 'Kaydet'}
+              </button>
             </div>
 
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Bitiş Tarihi</label>
-              <input type="date" value={subExpiry} onChange={e => setSubExpiry(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
-            </div>
+            {/* Ödeme al */}
+            <div className="bg-white rounded-xl shadow-sm p-5">
+              <div className="text-sm font-bold text-gray-900 mb-4">💰 Ödeme Al</div>
 
-            <div className="mb-5">
-              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Öğrenci Limiti</label>
-              <input type="number" value={studentLimit} onChange={e => setStudentLimit(+e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
-            </div>
+              <div className="space-y-2 mb-4">
+                {Object.entries(PAKET_FIYATLARI).map(([key, p]) => (
+                  <button key={key}
+                    onClick={() => setPayForm(f => ({ ...f, paket: key, tutar: p.toplam }))}
+                    className={`w-full py-3 px-4 rounded-xl border-2 text-sm font-semibold text-left transition-all ${payForm.paket === key ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-700 hover:border-green-300'}`}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
 
-            <button onClick={saveSubscription} disabled={saving}
-              className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg text-sm disabled:opacity-50 transition-colors">
-              {saving ? '⏳ Kaydediliyor...' : saved ? '✅ Kaydedildi!' : 'Değişiklikleri Kaydet'}
-            </button>
+              <div className="mb-3">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Tutar (₺)</label>
+                <input type="number" value={payForm.tutar} onChange={e => setPayForm(f => ({ ...f, tutar: parseFloat(e.target.value) }))}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+              </div>
+
+              <div className="mb-3">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Not (opsiyonel)</label>
+                <input value={payForm.not} onChange={e => setPayForm(f => ({ ...f, not: e.target.value }))}
+                  placeholder="Havale, EFT, nakit..."
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+              </div>
+
+              <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                <input type="checkbox" checked={payForm.markPaid}
+                  onChange={e => setPayForm(f => ({ ...f, markPaid: e.target.checked }))}
+                  className="w-4 h-4 accent-green-500" />
+                <span className="text-sm text-gray-700">Ödendi olarak işaretle + aboneliği 1 yıl uzat</span>
+              </label>
+
+              <button onClick={async () => {
+                setPaying(true)
+                try {
+                  await paymentsApi.create({
+                    institution_id: id!,
+                    amount: payForm.tutar,
+                    due_date: new Date().toISOString().split('T')[0],
+                    note: payForm.not || undefined,
+                    mark_paid_now: payForm.markPaid,
+                  })
+                  if (payForm.markPaid) {
+                    setSubStatus('active')
+                    const newExpiry = new Date()
+                    newExpiry.setFullYear(newExpiry.getFullYear() + 1)
+                    setSubExpiry(newExpiry.toISOString().split('T')[0])
+                  }
+                  const updated = await paymentsApi.institutionPayments(id!)
+                  setPayments(updated)
+                  toast('Ödeme kaydedildi ✅', 'success')
+                  setPayForm(f => ({ ...f, not: '' }))
+                } catch (e: any) {
+                  toast(e.message || 'Kayıt başarısız', 'error')
+                } finally {
+                  setPaying(false)
+                }
+              }} disabled={paying}
+                className="w-full py-3 bg-[#1B4332] hover:bg-green-800 text-white font-bold rounded-xl text-sm disabled:opacity-50 transition-colors">
+                {paying ? '⏳ Kaydediliyor...' : '💰 Ödemeyi Kaydet'}
+              </button>
+            </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm p-5">
-            <div className="text-sm font-bold text-gray-900 mb-4">📦 Hızlı Paket Uygula</div>
-            <div className="space-y-2">
-              {SUB_PLANS.map(p => (
-                <button key={p.id} onClick={() => {
-                  setSubStatus(p.id === 'trial' ? 'trial' : 'active')
-                  const d = new Date()
-                  if (p.days) d.setDate(d.getDate() + p.days)
-                  if (p.months) d.setMonth(d.getMonth() + p.months)
-                  setSubExpiry(d.toISOString().split('T')[0])
-                }}
-                  className="w-full py-3 border-2 border-gray-200 hover:border-green-400 text-gray-700 text-sm font-semibold rounded-xl text-left px-4 transition-all hover:bg-green-50">
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <div className="mt-2 text-xs text-gray-400">Bir paket seçtikten sonra sol taraftaki "Değişiklikleri Kaydet" butonuna basmayı unutmayın.</div>
+          {/* Ödeme Geçmişi */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 text-sm font-bold text-gray-900">📋 Ödeme Geçmişi</div>
+            {!paymentsLoaded ? (
+              <div className="text-center py-8 text-gray-400 text-sm">⏳ Yükleniyor...</div>
+            ) : payments.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 text-sm">Henüz ödeme kaydı yok</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {['Tarih', 'Tutar', 'Durum', 'Ödeme Tarihi', 'Not'].map(h => (
+                      <th key={h} className="text-left px-4 py-2.5 text-xs font-bold text-gray-400 uppercase">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map(p => (
+                    <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-2.5 text-xs text-gray-500">{p.due_date}</td>
+                      <td className="px-4 py-2.5 font-bold text-gray-900">{Number(p.amount).toLocaleString('tr-TR')} ₺</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          p.status === 'paid' ? 'bg-green-100 text-green-700' :
+                          p.status === 'overdue' ? 'bg-red-100 text-red-600' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
+                          {p.status === 'paid' ? '✅ Ödendi' : p.status === 'overdue' ? '⚠️ Gecikmiş' : '⏳ Bekliyor'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500">{p.paid_at || '—'}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500">{p.note || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

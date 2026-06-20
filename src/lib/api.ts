@@ -215,6 +215,10 @@ export const paymentsApi = {
   list: (status?: string) => req<any[]>(`/payments${status ? `?status_filter=${status}` : ''}`),
   confirm: (id: string, extendOneYear = true) =>
     req(`/payments/${id}/confirm`, { method: 'POST', body: JSON.stringify({ extend_one_year: extendOneYear }) }),
+  create: (data: { institution_id: string; amount: number; due_date: string; note?: string; mark_paid_now?: boolean }) =>
+    req<any>('/payments/create', { method: 'POST', body: JSON.stringify(data) }),
+  institutionPayments: (institutionId: string) =>
+    req<any[]>(`/payments/institution/${institutionId}`),
 }
 
 // ── MODULES ───────────────────────────────────────────────────────────────────────
