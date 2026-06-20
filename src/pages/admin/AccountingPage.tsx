@@ -295,6 +295,7 @@ function normalizeEntry(e: any): Entry {
     toKasaId: e.to_cash_register_id || undefined,
     note: e.note || undefined,
     donor: e.donor_name || undefined,
+    receipt_url: e.receipt_url || undefined,
   }
 }
 
