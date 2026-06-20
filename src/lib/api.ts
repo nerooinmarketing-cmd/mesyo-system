@@ -172,6 +172,12 @@ export const institutionSettingsApi = {
   getAddress: () => req<{ allowed_districts: string[] | null; allowed_mahalles: string[] | null; city: string; district: string }>('/institution/settings/address'),
   updateAddress: (data: { allowed_districts: string[]; allowed_mahalles: string[] }) =>
     req('/institution/settings/address', { method: 'PATCH', body: JSON.stringify(data) }),
+  getPaymentStatus: () => req<{
+    subscription_status: string;
+    subscription_expires_at: string | null;
+    trial_ends_at: string | null;
+    latest_payment: { id: string; due_date: string; amount: number; status: string; paid_at: string | null } | null;
+  }>('/institution/payment-status'),
 }
 
 // ── ASSIGNMENTS ────────────────────────────────────────────────────────────────

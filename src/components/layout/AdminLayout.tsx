@@ -1,9 +1,10 @@
-import { ReactNode, useState } from 'react'
+import { ReactNode, useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useModules } from '@/contexts/ModuleContext'
 import { PaymentAlert } from '@/components/admin/PaymentAlert'
 import { cn } from '@/lib/utils'
+import { institutionSettingsApi } from '@/lib/api'
 import {
   LayoutDashboard, ClipboardList, School, Users, CheckSquare,
   Map, Settings, LogOut, KeyRound, Menu, X, ChevronUp,
@@ -47,6 +48,31 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+
+  // Ödeme durumu
+  const [paymentDue, setPaymentDue] = useState<string | null>(null)
+  const [showPaymentAlert, setShowPaymentAlert] = useState(false)
+
+  useEffect(() => {
+    institutionSettingsApi.getPaymentStatus().then(data => {
+      const today = new Date()
+      const status = data.subscription_status
+      if (status === 'expired') {
+        setPaymentDue(data.subscription_expires_at || new Date().toISOString().split('T')[0])
+        setShowPaymentAlert(true)
+        return
+      }
+      if (status === 'trial' && data.trial_ends_at) {
+        const daysLeft = Math.ceil((new Date(data.trial_ends_at).getTime() - today.getTime()) / 86400000)
+        if (daysLeft <= 14) { setPaymentDue(data.trial_ends_at); setShowPaymentAlert(true) }
+        return
+      }
+      if (status === 'active' && data.subscription_expires_at) {
+        const daysLeft = Math.ceil((new Date(data.subscription_expires_at).getTime() - today.getTime()) / 86400000)
+        if (daysLeft <= 40) { setPaymentDue(data.subscription_expires_at); setShowPaymentAlert(true) }
+      }
+    }).catch(() => {})
+  }, [])
 
   const goTo = (path: string) => { navigate(path); setUserMenuOpen(false); setSidebarOpen(false) }
 
@@ -199,7 +225,9 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
           )}
         </header>
 
-        <PaymentAlert dueDate={new Date(new Date().getTime() + 7*24*60*60*1000).toISOString().split('T')[0]} />
+        {showPaymentAlert && paymentDue && (
+          <PaymentAlert dueDate={paymentDue} />
+        )}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
 
         <nav className="lg:hidden flex bg-white border-t border-gray-200 flex-shrink-0">
