@@ -13,8 +13,9 @@ export default function GamePlayPage() {
   const [childQs, setChildQs] = useState<any[]>([])
   const [parentQs, setParentQs] = useState<any[]>([])
 
-  const [phone, setPhone] = useState('')
-  const [playerName, setPlayerName] = useState('')
+  // Telefonu URL'den al
+  const urlPhone = new URLSearchParams(window.location.search).get('tel') || ''
+  const [phone] = useState(urlPhone)
   const [password, setPassword] = useState('')
   const [pwError, setPwError] = useState('')
   const [studentName, setStudentName] = useState('')
@@ -99,7 +100,7 @@ export default function GamePlayPage() {
       body: JSON.stringify({ password: password.trim(), phone: phone.trim() })
     }).then(r => r.json())
     if (!res.correct) { setPwError('Şifre yanlış! Hocandan öğren.'); setPassword(''); return }
-    setStudentName(res.student_name || playerName || 'Öğrenci')
+    setStudentName(res.student_name || 'Öğrenci')
     setParentName(res.parent_name || 'Veli')
     setScreen('child-intro')
   }
@@ -112,7 +113,7 @@ export default function GamePlayPage() {
       const res = await fetch(`/api/game/play/${gameId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ game_id: gameId, parent_phone: phone, player_name: playerName, child_answers: cA, parent_answers: pA })
+        body: JSON.stringify({ game_id: gameId, parent_phone: phone, child_answers: cA, parent_answers: pA })
       }).then(r => r.json())
       setFinalResult(res)
       setScreen('result')
@@ -167,14 +168,7 @@ export default function GamePlayPage() {
           <input value={password} onChange={e => { setPassword(e.target.value.toUpperCase()); setPwError('') }}
             onKeyDown={e => e.key==='Enter' && verifyPw()}
             placeholder="ŞİFREYİ YAZ..."
-            className="w-full px-4 py-4 border-2 border-amber-300 focus:border-amber-500 rounded-2xl text-center text-2xl font-extrabold tracking-widest uppercase outline-none mb-3" />
-          <input value={playerName} onChange={e => setPlayerName(e.target.value)}
-            placeholder="Çocuğun adı (opsiyonel)"
-            className="w-full px-4 py-3 border border-gray-200 rounded-2xl text-center text-sm outline-none focus:border-green-400 mb-2 text-gray-600" />
-          <input value={phone} onChange={e => setPhone(e.target.value)}
-            placeholder="Veli telefonu (opsiyonel)"
-            type="tel"
-            className="w-full px-4 py-3 border border-gray-200 rounded-2xl text-center text-sm outline-none focus:border-green-400 mb-5 text-gray-600" />
+            className="w-full px-4 py-4 border-2 border-amber-300 focus:border-amber-500 rounded-2xl text-center text-2xl font-extrabold tracking-widest uppercase outline-none mb-5" />
           <button onClick={verifyPw} disabled={!password.trim()}
             className="w-full py-4 bg-[#1B4332] hover:bg-green-800 text-white font-extrabold text-lg rounded-2xl disabled:opacity-40 transition-colors shadow-md">
             Yarışmaya Gir →
@@ -361,7 +355,7 @@ export default function GamePlayPage() {
             ? <div className="bg-white rounded-2xl shadow p-6 text-center text-gray-400 text-sm">Henüz katılımcı yok</div>
             : leaderboard.map((e, i) => {
               const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`
-              const isMe = e.name === studentName || e.name === playerName
+              const isMe = e.name === studentName
               return (
                 <div key={i} className={cn('bg-white rounded-2xl shadow-sm flex items-center gap-3 px-4 py-4 border-2 transition-all',
                   isMe?'border-amber-400 bg-amber-50':'border-transparent')}>

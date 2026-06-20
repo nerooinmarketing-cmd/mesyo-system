@@ -123,10 +123,10 @@ export default function GameAdminPage() {
   const sendAll = async () => {
     if (!participants.length) { toast('Veli bulunamadı','error'); return }
     setSending(true); setSentCount(0)
-    const gameUrl = `${window.location.origin}/oyun/${selGame?.id}`
+    const gameUrl = (tel: string) => `${window.location.origin}/oyun/${selGame?.id}?tel=${encodeURIComponent(tel)}`
     participants.forEach((s, i) => {
       setTimeout(() => {
-        const msg = `Sayın ${s.parent_first_name} ${s.parent_last_name} 👋\n\n🎮 *Kubbeler Yarışıyor!*\n📅 ${selGame?.game_date} — ⏰ Saat ${selGame?.open_time?.slice(0,5)}\n\n👇 Katılmak için tıklayın:\n${gameUrl}\n\nBaşarılar! 🌙`
+        const msg = `Sayın ${s.parent_first_name} ${s.parent_last_name} 👋\n\n🎮 *Kubbeler Yarışıyor!*\n📅 ${selGame?.game_date} — ⏰ Saat ${selGame?.open_time?.slice(0,5)}\n\n👇 Katılmak için tıklayın:\n${gameUrl(s.parent_phone)}\n\nBaşarılar! 🌙`
         window.open(waLink(s.parent_phone, msg), '_blank')
         setSentCount(i+1)
       }, i*800)
