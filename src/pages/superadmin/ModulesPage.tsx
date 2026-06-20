@@ -20,7 +20,7 @@ export default function ModulesPage() {
   const [loadError, setLoadError] = useState('')
   const [instName, setInstName] = useState('Kurum')
   const [allModules, setAllModules] = useState<any[]>([])
-  const [modules, setModules] = useState<Record<string, boolean>>({})
+  const [modules, setModules] = useState<Record<string, { is_active: boolean; custom_name: string | null }>>({})
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -39,7 +39,15 @@ export default function ModulesPage() {
         if (cancelled) return
         setInstName(inst.name)
         setAllModules(catalog)
-        setModules(current)
+        const normalized: Record<string, { is_active: boolean; custom_name: string | null }> = {}
+        for (const [k, v] of Object.entries(current as any)) {
+          if (typeof v === 'boolean') {
+            normalized[k] = { is_active: v, custom_name: null }
+          } else {
+            normalized[k] = { is_active: (v as any).is_active, custom_name: (v as any).custom_name || null }
+          }
+        }
+        setModules(normalized)
       } catch (e: any) {
         if (!cancelled) setLoadError(e.message || 'Modüller yüklenirken bir hata oluştu')
       } finally {
@@ -53,14 +61,24 @@ export default function ModulesPage() {
   const toggle = (moduleId: string) => {
     const mod = allModules.find(m => m.id === moduleId)
     if (mod?.category === 'core') { toast('Temel modüller kapatılamaz', 'error'); return }
-    setModules(p => ({ ...p, [moduleId]: !p[moduleId] }))
+    setModules(p => ({ ...p, [moduleId]: { ...p[moduleId], is_active: !p[moduleId]?.is_active } }))
+  }
+
+  const setCustomName = (moduleId: string, name: string) => {
+    setModules(p => ({ ...p, [moduleId]: { ...p[moduleId], custom_name: name || null } }))
   }
 
   const save = async () => {
     if (!id) return
     setSaving(true)
     try {
-      const updates = allModules.map(m => ({ module_id: m.id, is_active: modules[m.id] !== false }))
+      const updates = allModules.map(m => ({
+        module_id: m.id,
+        is_active: modules[m.id]?.is_active ?? m.is_default,
+        custom_name: modules[m.id]?.custom_name || null,
+      }))
+      await modulesApi.updateInstitutionModules(id, updates)
+      toast('Modüller kaydedildi ✅', 'success')
       await modulesApi.updateInstitutionModules(id, updates)
       toast('Modüller kaydedildi ✅', 'success')
     } catch (e: any) {
@@ -70,8 +88,8 @@ export default function ModulesPage() {
     }
   }
 
-  const enableAll = () => setModules(Object.fromEntries(allModules.map(m => [m.id, true])))
-  const resetDefaults = () => setModules(Object.fromEntries(allModules.map(m => [m.id, m.is_default])))
+  const enableAll = () => setModules(Object.fromEntries(allModules.map(m => [m.id, { is_active: true, custom_name: modules[m.id]?.custom_name || null }])))
+  const resetDefaults = () => setModules(Object.fromEntries(allModules.map(m => [m.id, { is_active: m.is_default, custom_name: modules[m.id]?.custom_name || null }])))
 
   const categories = ['core', 'advanced', 'communication', 'reporting'] as const
 
@@ -112,7 +130,7 @@ export default function ModulesPage() {
         <div>
           <div className="text-lg font-extrabold text-gray-900">{instName}</div>
           <div className="text-sm text-gray-400 mt-0.5">
-            {Object.values(modules).filter(Boolean).length} / {allModules.length} modül aktif
+            {Object.values(modules).filter(m => m.is_active).length} / {allModules.length} modül aktif
           </div>
         </div>
         <div className="flex gap-2">
@@ -141,7 +159,8 @@ export default function ModulesPage() {
               <div className="text-sm font-bold text-gray-700 mb-2">{CATEGORY_LABELS[cat]}</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {catModules.map(mod => {
-                  const active = modules[mod.id] !== false
+                  const active = modules[mod.id]?.is_active ?? mod.is_default
+                  const customName = modules[mod.id]?.custom_name || ''
                   const isCore = mod.category === 'core'
                   return (
                     <div key={mod.id}
@@ -158,6 +177,15 @@ export default function ModulesPage() {
                             )}
                           </div>
                           <p className="text-xs text-gray-400 mt-0.5">{mod.description}</p>
+                          {active && (
+                            <input
+                              value={customName}
+                              onChange={e => setCustomName(mod.id, e.target.value)}
+                              placeholder={`Özel isim (varsayılan: ${mod.name})`}
+                              className="mt-2 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-green-500"
+                              onClick={e => e.stopPropagation()}
+                            />
+                          )}
                         </div>
                         {/* Toggle */}
                         <button
