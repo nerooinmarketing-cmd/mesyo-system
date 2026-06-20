@@ -178,6 +178,7 @@ export const institutionSettingsApi = {
     trial_ends_at: string | null;
     latest_payment: { id: string; due_date: string; amount: number; status: string; paid_at: string | null } | null;
   }>('/institution/payment-status'),
+  getNotificationLogs: () => req<any[]>('/institution/notification-logs'),
 }
 
 // ── ASSIGNMENTS ────────────────────────────────────────────────────────────────
@@ -282,4 +283,24 @@ export const accountingApi = {
   updateEntry: (id: string, data: Record<string, any>) =>
     req<any>(`/accounting/entries/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteEntry: (id: string) => req(`/accounting/entries/${id}`, { method: 'DELETE' }),
+}
+
+// ── GAME (Kubbeler Yarışıyor) ──────────────────────────────────────────────
+export const gameApi = {
+  // Sorular
+  questions: () => req<any[]>('/game/questions'),
+  createQuestion: (data: any) => req<any>('/game/questions', { method: 'POST', body: JSON.stringify(data) }),
+  deleteQuestion: (id: string) => req(`/game/questions/${id}`, { method: 'DELETE' }),
+
+  // Takvim
+  calendar: () => req<any[]>('/game/calendar'),
+  createDailyGame: (data: any) => req<any>('/game/calendar', { method: 'POST', body: JSON.stringify(data) }),
+  deleteDailyGame: (id: string) => req(`/game/calendar/${id}`, { method: 'DELETE' }),
+
+  // Public (auth gerektirmez)
+  getGame: (gameId: string) => fetch(`/api/game/play/${gameId}`).then(r => r.json()),
+  submitAnswer: (gameId: string, data: any) =>
+    fetch(`/api/game/play/${gameId}/answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => r.json()),
+  leaderboard: (gameId: string) =>
+    fetch(`/api/game/play/${gameId}/leaderboard`).then(r => r.json()),
 }
