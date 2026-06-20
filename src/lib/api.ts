@@ -296,6 +296,7 @@ export const gameApi = {
   calendar: () => req<any[]>('/game/calendar'),
   createDailyGame: (data: any) => req<any>('/game/calendar', { method: 'POST', body: JSON.stringify(data) }),
   deleteDailyGame: (id: string) => req(`/game/calendar/${id}`, { method: 'DELETE' }),
+  participants: (gameId: string) => req<any>(`/game/calendar/${gameId}/participants`),
 
   // Public (auth gerektirmez)
   getGame: (gameId: string) => fetch(`/api/game/play/${gameId}`).then(r => r.json()),
