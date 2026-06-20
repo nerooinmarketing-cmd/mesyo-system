@@ -369,8 +369,8 @@ export default function GameAdminPage() {
               ))}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Süre (saniye)</label>
-                <input type="number" value={qForm.time_seconds} onChange={e => setQForm(f => ({ ...f, time_seconds: parseInt(e.target.value) }))}
-                  min={10} max={120}
+                <input type="number" value={qForm.time_seconds} onChange={e => setQForm(f => ({ ...f, time_seconds: parseInt(e.target.value) || 30 }))}
+                  min={10} max={600}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
               </div>
               <div>
