@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
-import { Button, Modal, Alert, useToast, Badge } from '@/components/ui'
-import { DEMO_STUDENTS, DEMO_CLASSROOMS } from '@/lib/demo-data'
+import { Button, Modal, useToast } from '@/components/ui'
 import { waLink } from '@/lib/utils'
+import { classroomsApi, studentsApi } from '@/lib/api'
 
-type Target = 'all' | 'class' | 'gender' | 'custom'
+type Target = 'all' | 'class' | 'gender'
 
 interface Announcement {
   id: number; title: string; message: string
@@ -21,6 +21,10 @@ const TEMPLATES = [
 
 export default function AnnouncementsPage() {
   const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [classrooms, setClassrooms] = useState<any[]>([])
+  const [allStudents, setAllStudents] = useState<any[]>([])
+
   const [target, setTarget] = useState<Target>('all')
   const [selClass, setSelClass] = useState('')
   const [selGender, setSelGender] = useState<'erkek'|'kiz'|''>('')
@@ -29,29 +33,50 @@ export default function AnnouncementsPage() {
   const [preview, setPreview] = useState(false)
   const [sending, setSending] = useState(false)
   const [sentCount, setSentCount] = useState(0)
-  const [past, setPast] = useState<Announcement[]>([
-    { id:1, title:'Ders İptali', message:'17-18 Haziran tarihlerinde ders yapılmayacaktır.', target:'Tüm Veliler', sentCount:9, date:'2026-06-15' },
-    { id:2, title:'Bayram Tebriği', message:'Bayramınızı tebrik eder...', target:'Tüm Veliler', sentCount:9, date:'2026-06-10' },
-  ])
+  const [past, setPast] = useState<Announcement[]>([])
 
-  // Hedef velileri hesapla
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const [cls, students] = await Promise.all([
+          classroomsApi.list(),
+          studentsApi.list({ status: 'approved' }),
+        ])
+        if (cancelled) return
+        setClassrooms(cls)
+        setAllStudents(students)
+      } catch (e: any) {
+        toast(e.message || 'Veriler yüklenemedi', 'error')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
   const getTargets = () => {
-    let students = DEMO_STUDENTS
+    let students = allStudents
     if (target === 'class' && selClass) students = students.filter(s => s.classroom_id === selClass)
     if (target === 'gender' && selGender) students = students.filter(s => s.gender === selGender)
     return students
   }
 
   const targets = getTargets()
-  const targetLabel = target==='all'?'Tüm Veliler':target==='class'?`${DEMO_CLASSROOMS.find(c=>c.id===selClass)?.name||'Sınıf'} Velileri`:target==='gender'?`${selGender==='erkek'?'Erkek':'Kız'} Öğrenci Velileri`:'Özel Liste'
+  const cls = classrooms.find(c => c.id === selClass)
+  const targetLabel = target === 'all' ? 'Tüm Veliler'
+    : target === 'class' ? `${cls?.name || 'Sınıf'} Velileri`
+    : `${selGender === 'erkek' ? 'Erkek' : 'Kız'} Öğrenci Velileri`
 
   const send = async () => {
-    if (!title || !message) { toast('Başlık ve mesaj zorunlu','error'); return }
-    if (!targets.length) { toast('Hedef veli bulunamadı','error'); return }
+    if (!title || !message) { toast('Başlık ve mesaj zorunlu', 'error'); return }
+    if (!targets.length) { toast('Hedef veli bulunamadı', 'error'); return }
     setSending(true); setSentCount(0)
     targets.forEach((s, i) => {
       setTimeout(() => {
-        window.open(waLink(s.parent_phone, `Sayın ${(s.parent_first_name + ' ' + s.parent_last_name)} 👋\n\n*${title}*\n\n${message}`), '_blank')
+        const parentName = `${s.parent_first_name} ${s.parent_last_name}`
+        window.open(waLink(s.parent_phone, `Sayın ${parentName} 👋\n\n*${title}*\n\n${message}`), '_blank')
         setSentCount(i + 1)
       }, i * 800)
     })
@@ -65,12 +90,10 @@ export default function AnnouncementsPage() {
   return (
     <AdminLayout>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Yeni duyuru */}
         <div className="space-y-3">
           <div className="bg-white rounded-xl shadow-sm p-5">
             <div className="text-sm font-bold text-gray-900 mb-4">📢 Yeni Duyuru Gönder</div>
 
-            {/* Şablonlar */}
             <div className="mb-4">
               <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Hazır Şablon Seç</div>
               <div className="flex flex-wrap gap-1.5">
@@ -96,26 +119,25 @@ export default function AnnouncementsPage() {
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500 resize-none" />
             </div>
 
-            {/* Hedef */}
             <div className="mb-4">
               <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Kimler Alacak?</div>
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                {[['all','👥 Tüm Veliler'],['class','🏫 Belirli Sınıf'],['gender','⚧ Cinsiyet Bazlı']] .map(([v,l]) => (
-                  <button key={v} onClick={() => setTarget(v as Target)}
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                {([['all','👥 Tüm Veliler'],['class','🏫 Belirli Sınıf'],['gender','⚧ Cinsiyet']] as const).map(([v,l]) => (
+                  <button key={v} onClick={() => setTarget(v)}
                     className={`py-2 px-3 rounded-lg border-2 text-xs font-semibold text-left transition-all ${target===v?'border-green-500 bg-green-50 text-green-700':'border-gray-200 text-gray-600'}`}>
                     {l}
                   </button>
                 ))}
               </div>
-              {target==='class' && (
-                <select value={selClass} onChange={e=>setSelClass(e.target.value)}
+              {target === 'class' && (
+                <select value={selClass} onChange={e => setSelClass(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500 mt-1">
                   <option value="">Sınıf seçin</option>
-                  {DEMO_CLASSROOMS.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                  {loading ? <option disabled>Yükleniyor...</option> : classrooms.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               )}
-              {target==='gender' && (
-                <select value={selGender} onChange={e=>setSelGender(e.target.value as any)}
+              {target === 'gender' && (
+                <select value={selGender} onChange={e => setSelGender(e.target.value as any)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500 mt-1">
                   <option value="">Cinsiyet seçin</option>
                   <option value="erkek">👦 Erkek</option>
@@ -124,51 +146,44 @@ export default function AnnouncementsPage() {
               )}
             </div>
 
-            {/* Özet */}
             <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 flex items-center justify-between">
               <div>
                 <div className="text-xs font-bold text-green-700">Hedef: {targetLabel}</div>
-                <div className="text-xs text-green-600 mt-0.5">{targets.length} veliye gönderilecek</div>
+                <div className="text-xs text-green-600 mt-0.5">{loading ? 'Yükleniyor...' : `${targets.length} veliye gönderilecek`}</div>
               </div>
-              <div className="text-2xl font-extrabold text-green-600">{targets.length}</div>
+              <div className="text-2xl font-extrabold text-green-600">{loading ? '...' : targets.length}</div>
             </div>
 
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setPreview(true)} className="flex-1 justify-center">👁 Önizle</Button>
-              <Button onClick={send} loading={sending} className="flex-1 justify-center">
+              <Button onClick={send} loading={sending} disabled={loading} className="flex-1 justify-center">
                 {sending ? `📱 ${sentCount}/${targets.length} Gönderiliyor...` : '📱 Gönder'}
               </Button>
             </div>
           </div>
         </div>
 
-        {/* Geçmiş */}
         <div>
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 text-sm font-bold text-gray-900">📋 Geçmiş Duyurular</div>
-            {past.length===0
+            {past.length === 0
               ? <div className="text-center py-10 text-gray-400 text-sm">Henüz duyuru gönderilmedi</div>
-              : past.map(a=>(
-                  <div key={a.id} className="px-4 py-3 border-b border-gray-50 last:border-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-gray-900">{a.title}</div>
-                        <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{a.message}</div>
-                        <div className="flex gap-2 mt-1">
-                          <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{a.target}</span>
-                          <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">{a.sentCount} kişi</span>
-                          <span className="text-[10px] text-gray-400">{a.date}</span>
-                        </div>
-                      </div>
-                    </div>
+              : past.map(a => (
+                <div key={a.id} className="px-4 py-3 border-b border-gray-50 last:border-0">
+                  <div className="text-sm font-bold text-gray-900">{a.title}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{a.message}</div>
+                  <div className="flex gap-2 mt-1">
+                    <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{a.target}</span>
+                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">{a.sentCount} kişi</span>
+                    <span className="text-[10px] text-gray-400">{a.date}</span>
                   </div>
-                ))
+                </div>
+              ))
             }
           </div>
         </div>
       </div>
 
-      {/* Önizleme modal */}
       <Modal open={preview} onClose={() => setPreview(false)} title="👁 Mesaj Önizleme"
         footer={<><Button variant="outline" onClick={() => setPreview(false)}>Kapat</Button><Button onClick={send} loading={sending}>📱 Gönder ({targets.length} kişi)</Button></>}>
         <div className="bg-[#E8FDD8] rounded-2xl p-4 mb-3">
