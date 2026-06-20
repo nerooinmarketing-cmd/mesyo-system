@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 
 const OPTS = ['A','B','C','D'] as const
-
 type Screen = 'loading'|'password'|'child-intro'|'child-play'|'handover'|'parent-intro'|'parent-play'|'result'|'leaderboard'|'error'
 
 export default function GamePlayPage() {
@@ -12,14 +11,13 @@ export default function GamePlayPage() {
   const [game, setGame] = useState<any>(null)
   const [childQs, setChildQs] = useState<any[]>([])
   const [parentQs, setParentQs] = useState<any[]>([])
-
-  // Telefonu URL'den al
   const urlPhone = new URLSearchParams(window.location.search).get('tel') || ''
   const [phone] = useState(urlPhone)
   const [password, setPassword] = useState('')
   const [pwError, setPwError] = useState('')
   const [studentName, setStudentName] = useState('')
   const [parentName, setParentName] = useState('')
+  const [correctAnswers, setCorrectAnswers] = useState<Record<string,{correct:string,player_type:string}>>({})
 
   const [qIndex, setQIndex] = useState(0)
   const [timeLeft, setTimeLeft] = useState(30)
@@ -31,6 +29,7 @@ export default function GamePlayPage() {
   const timerRef = useRef<any>(null)
   const [finalResult, setFinalResult] = useState<any>(null)
   const [leaderboard, setLeaderboard] = useState<any[]>([])
+  const [lbLoading, setLbLoading] = useState(false)
 
   useEffect(() => {
     if (!gameId) return
@@ -62,7 +61,7 @@ export default function GamePlayPage() {
     if (chosen) return
     setChosen('__')
     setShowAns(true)
-    setTimeout(() => advance('__'), 2000)
+    setTimeout(() => advance('__'), 2500)
   }
 
   const pick = (opt: string) => {
@@ -70,7 +69,7 @@ export default function GamePlayPage() {
     clearInterval(timerRef.current)
     setChosen(opt)
     setShowAns(true)
-    setTimeout(() => advance(opt), 1800)
+    setTimeout(() => advance(opt), 2000)
   }
 
   const advance = (opt: string) => {
@@ -97,11 +96,12 @@ export default function GamePlayPage() {
     const res = await fetch(`/api/game/play/${gameId}/verify-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: password.trim(), phone: phone.trim() })
+      body: JSON.stringify({ password: password.trim(), phone })
     }).then(r => r.json())
     if (!res.correct) { setPwError('Şifre yanlış! Hocandan öğren.'); setPassword(''); return }
     setStudentName(res.student_name || 'Öğrenci')
     setParentName(res.parent_name || 'Veli')
+    if (res.correct_answers) setCorrectAnswers(res.correct_answers)
     setScreen('child-intro')
   }
 
@@ -111,8 +111,7 @@ export default function GamePlayPage() {
   const submit = async (cA: any[], pA: any[]) => {
     try {
       const res = await fetch(`/api/game/play/${gameId}/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ game_id: gameId, parent_phone: phone, child_answers: cA, parent_answers: pA })
       }).then(r => r.json())
       setFinalResult(res)
@@ -121,22 +120,18 @@ export default function GamePlayPage() {
   }
 
   const loadLB = async () => {
-    const d = await fetch(`/api/game/play/${gameId}/leaderboard`).then(r => r.json())
-    setLeaderboard(d)
-    setScreen('leaderboard')
+    setLbLoading(true)
+    try {
+      const d = await fetch(`/api/game/play/${gameId}/leaderboard`).then(r => r.json())
+      setLeaderboard(d)
+      setScreen('leaderboard')
+    } finally { setLbLoading(false) }
   }
 
   const curQ = screen === 'child-play' ? childQs[qIndex] : parentQs[qIndex]
   const totalQs = screen === 'child-play' ? childQs.length : parentQs.length
   const timerPct = curQ ? (timeLeft / (curQ.time_seconds||30)) * 100 : 100
-
-  const Header = ({ emoji, title, sub }: any) => (
-    <div className="text-center mb-6">
-      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-4xl mx-auto mb-3 shadow-inner">{emoji}</div>
-      <h1 className="text-2xl font-extrabold text-gray-900">{title}</h1>
-      {sub && <p className="text-gray-400 text-sm mt-1">{sub}</p>}
-    </div>
-  )
+  const correctOpt = curQ ? correctAnswers[curQ.id]?.correct : null
 
   if (screen === 'loading') return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -146,7 +141,7 @@ export default function GamePlayPage() {
 
   if (screen === 'error') return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="text-center"><div className="text-5xl mb-3">😔</div><div className="text-xl font-bold text-gray-800">Oyun Bulunamadı</div><p className="text-gray-400 text-sm mt-2">Bu link geçerli değil veya süresi dolmuş</p></div>
+      <div className="text-center"><div className="text-5xl mb-3">😔</div><div className="text-xl font-bold text-gray-800">Oyun Bulunamadı</div></div>
     </div>
   )
 
@@ -181,99 +176,129 @@ export default function GamePlayPage() {
   if (screen === 'child-intro') return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <Header emoji="🦸" title={`Hazır mısın, ${studentName.split(' ')[0]}?`} sub={`Sana ${childQs.length} soru sorulacak!`} />
+        <div className="text-center mb-6">
+          <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-4xl mx-auto mb-3">🦸</div>
+          <h1 className="text-2xl font-extrabold text-gray-900">Hazır mısın, {studentName.split(' ')[0]}?</h1>
+          <p className="text-gray-400 text-sm mt-1">Sana {childQs.length} soru sorulacak!</p>
+        </div>
         <div className="bg-white rounded-3xl shadow-xl p-6 mb-5">
           {[{icon:'✅',text:'Süre dolmadan cevap ver'},{icon:'⚡',text:'Hızlı cevap = bonus puan'},{icon:'🤫',text:'Anne/babana şıkkı söyleme!'}].map(r => (
             <div key={r.text} className="flex items-center gap-3 py-3 border-b border-gray-50 last:border-0">
-              <div className="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center text-xl">{r.icon}</div>
+              <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center text-xl">{r.icon}</div>
               <span className="text-gray-700 font-semibold text-sm">{r.text}</span>
             </div>
           ))}
         </div>
-        <button onClick={startChild} className="w-full py-5 bg-[#1B4332] hover:bg-green-800 text-white font-extrabold text-xl rounded-2xl shadow-lg transition-colors">
-          🚀 Başla!
-        </button>
+        <button onClick={startChild} className="w-full py-5 bg-[#1B4332] text-white font-extrabold text-xl rounded-2xl shadow-lg">🚀 Başla!</button>
       </div>
     </div>
   )
 
-  if (screen === 'child-play' || screen === 'parent-play') return (
-    <div className="min-h-screen bg-gray-50 flex flex-col p-4 max-w-sm mx-auto">
-      {/* Üst bar */}
-      <div className="flex items-center justify-between mb-3 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold', screen==='child-play'?'bg-blue-100 text-blue-700':'bg-purple-100 text-purple-700')}>
-            {screen==='child-play'?'👦':'👨'}
+  if (screen === 'child-play' || screen === 'parent-play') {
+    const isCorrect = showAns && correctOpt && chosen !== '__' && chosen === correctOpt
+    const isWrong = showAns && correctOpt && chosen !== '__' && chosen !== correctOpt
+    const isTimeout = showAns && chosen === '__'
+
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col p-4 max-w-sm mx-auto">
+        {/* Üst bar */}
+        <div className="flex items-center justify-between mb-3 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold', screen==='child-play'?'bg-blue-100 text-blue-700':'bg-purple-100 text-purple-700')}>
+              {screen==='child-play'?'👦':'👨'}
+            </div>
+            <span className="text-gray-600 text-sm font-semibold">{screen==='child-play'?studentName.split(' ')[0]:parentName.split(' ')[0]||'Veli'}</span>
           </div>
-          <span className="text-gray-600 text-sm font-semibold">{screen==='child-play'?studentName.split(' ')[0]:parentName.split(' ')[0]||'Veli'}</span>
+          <div className="flex items-center gap-1.5">
+            {Array.from({length: totalQs}).map((_,i) => (
+              <div key={i} className={cn('w-2.5 h-2.5 rounded-full transition-all', i<qIndex?'bg-green-500':i===qIndex?'bg-gray-800':'bg-gray-200')} />
+            ))}
+          </div>
+          <div className={cn('w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg border-4',
+            timeLeft>10?'border-green-400 text-green-600 bg-green-50':'border-red-400 text-red-500 bg-red-50 animate-pulse')}>
+            {timeLeft}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {Array.from({length: totalQs}).map((_,i) => (
-            <div key={i} className={cn('w-2.5 h-2.5 rounded-full transition-all', i<qIndex?'bg-green-500':i===qIndex?'bg-gray-800':'bg-gray-200')} />
-          ))}
+
+        {/* Timer bar */}
+        <div className="h-2 bg-gray-200 rounded-full mb-4 overflow-hidden flex-shrink-0">
+          <div className={cn('h-full rounded-full transition-all duration-1000', timeLeft>10?'bg-green-500':'bg-red-500')} style={{width:`${timerPct}%`}} />
         </div>
-        <div className={cn('w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg border-4',
-          timeLeft>10?'border-green-400 text-green-600 bg-green-50':'border-red-400 text-red-500 bg-red-50 animate-pulse')}>
-          {timeLeft}
-        </div>
-      </div>
 
-      {/* Timer bar */}
-      <div className="h-2 bg-gray-200 rounded-full mb-4 overflow-hidden flex-shrink-0">
-        <div className={cn('h-full rounded-full transition-all duration-1000', timeLeft>10?'bg-green-500':'bg-red-500')}
-          style={{width:`${timerPct}%`}} />
-      </div>
-
-      {/* Soru kartı */}
-      <div className="bg-white rounded-3xl shadow-md p-6 mb-4 flex-shrink-0 border border-gray-100">
-        <div className="text-xs font-bold text-gray-400 uppercase mb-2">Soru {qIndex+1} / {totalQs}</div>
-        <div className="text-gray-900 font-bold text-lg leading-relaxed">{curQ?.question_text}</div>
-      </div>
-
-      {/* Şıklar */}
-      <div className="space-y-3 flex-1">
-        {OPTS.map(opt => {
-          const text = curQ?.[`option_${opt.toLowerCase()}`] || ''
-          const isChosen = chosen === opt
-          const optColors = { A:'bg-blue-500', B:'bg-purple-500', C:'bg-orange-500', D:'bg-red-500' }
-          const optLights = { A:'border-blue-200 bg-blue-50', B:'border-purple-200 bg-purple-50', C:'border-orange-200 bg-orange-50', D:'border-red-200 bg-red-50' }
-
-          let cls = 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-          if (!showAns && isChosen) cls = `${optLights[opt]} border-2`
-          if (showAns && isChosen) cls = `${optLights[opt]} border-2`
-          if (showAns && !isChosen) cls = 'border-gray-100 bg-gray-50 opacity-50'
-
-          return (
-            <button key={opt} onClick={() => pick(opt)} disabled={!!chosen}
-              className={cn('w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 font-semibold text-left transition-all shadow-sm', cls)}>
-              <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-extrabold flex-shrink-0', optColors[opt])}>
-                {opt}
+        {/* Cevap animasyonu overlay */}
+        {showAns && (
+          <div className={cn('fixed inset-0 z-50 flex items-center justify-center p-6 transition-all', isCorrect?'bg-green-500/90':isWrong?'bg-red-500/90':'bg-gray-700/90')}>
+            <div className="text-center">
+              <div className={cn('text-8xl mb-4 animate-bounce', isCorrect?'':'')}>
+                {isCorrect ? '✅' : isTimeout ? '⏰' : '❌'}
               </div>
-              <span className="text-gray-800 text-base">{text}</span>
-            </button>
-          )
-        })}
-      </div>
+              <div className="text-white font-extrabold text-3xl mb-2">
+                {isCorrect ? 'Doğru!' : isTimeout ? 'Süre Doldu!' : 'Yanlış!'}
+              </div>
+              {isWrong && correctOpt && (
+                <div className="bg-white/20 rounded-2xl px-6 py-3 text-white font-bold text-lg">
+                  Doğru cevap: {correctOpt}
+                </div>
+              )}
+              {isCorrect && (
+                <div className="bg-white/20 rounded-2xl px-6 py-3 text-white font-bold text-lg">
+                  +{timeLeft > (curQ?.time_seconds||30)/2 ? '120' : '100'} puan!
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
-      {showAns && (
-        <div className={cn('mt-4 rounded-2xl p-4 text-center font-bold text-base flex-shrink-0 shadow-sm',
-          chosen && chosen!=='__' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-red-100 text-red-600 border border-red-200')}>
-          {chosen === '__' ? '⏰ Süre Doldu! Sonraki soruya geçiliyor...' : `⏳ Cevap kaydedildi, devam ediliyor...`}
+        {/* Soru kartı */}
+        <div className="bg-white rounded-3xl shadow-md p-6 mb-4 flex-shrink-0 border border-gray-100">
+          <div className="text-xs font-bold text-gray-400 uppercase mb-2">Soru {qIndex+1} / {totalQs}</div>
+          <div className="text-gray-900 font-bold text-lg leading-relaxed">{curQ?.question_text}</div>
         </div>
-      )}
-    </div>
-  )
+
+        {/* Şıklar */}
+        <div className="space-y-3 flex-1">
+          {OPTS.map(opt => {
+            const text = curQ?.[`option_${opt.toLowerCase()}`] || ''
+            const optColors = { A:'bg-blue-500', B:'bg-purple-500', C:'bg-orange-500', D:'bg-red-500' }
+            const isChosen = chosen === opt
+            const isCorr = showAns && correctOpt === opt
+            const isWr = showAns && isChosen && correctOpt !== opt
+
+            let cls = 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+            if (isCorr) cls = 'border-green-400 bg-green-50'
+            else if (isWr) cls = 'border-red-400 bg-red-50'
+            else if (!showAns && isChosen) cls = 'border-blue-400 bg-blue-50'
+            else if (showAns && !isChosen) cls = 'border-gray-100 bg-gray-50 opacity-40'
+
+            return (
+              <button key={opt} onClick={() => pick(opt)} disabled={!!chosen}
+                className={cn('w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 font-semibold text-left transition-all shadow-sm', cls)}>
+                <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-extrabold flex-shrink-0', optColors[opt])}>
+                  {isCorr ? '✓' : isWr ? '✗' : opt}
+                </div>
+                <span className="text-gray-800 text-base">{text}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   if (screen === 'handover') return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <Header emoji="🎉" title={`Tebrikler, ${studentName.split(' ')[0]}!`} sub="Sorularını tamamladın!" />
+        <div className="text-center mb-6">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-4xl mx-auto mb-3">🎉</div>
+          <h1 className="text-2xl font-extrabold text-gray-900">Tebrikler, {studentName.split(' ')[0]}!</h1>
+          <p className="text-gray-400 text-sm mt-1">Sorularını tamamladın!</p>
+        </div>
         <div className="bg-white rounded-3xl shadow-xl p-6 mb-5 border-l-4 border-amber-400">
           <div className="font-bold text-gray-900 mb-1">👨 {parentName||'Veli'} için:</div>
-          <p className="text-gray-600 text-sm">Sıra sizde! {parentQs.length} soru gelecek. Hazır olunca butona basın.</p>
+          <p className="text-gray-600 text-sm">Sıra sizde! {parentQs.length} soru gelecek.</p>
         </div>
         <button onClick={() => setScreen('parent-intro')}
-          className="w-full py-5 bg-amber-500 hover:bg-amber-400 text-white font-extrabold text-xl rounded-2xl shadow-lg transition-colors">
+          className="w-full py-5 bg-amber-500 hover:bg-amber-400 text-white font-extrabold text-xl rounded-2xl shadow-lg">
           👨 Ben Hazırım!
         </button>
         <p className="text-gray-400 text-xs text-center mt-3">Bu butona sadece veli basmalı!</p>
@@ -284,7 +309,11 @@ export default function GamePlayPage() {
   if (screen === 'parent-intro') return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <Header emoji="🦅" title={`Sıra sizde${parentName?`, ${parentName.split(' ')[0]}`:''}!`} sub={`${parentQs.length} soru — veli puanı x1.5!`} />
+        <div className="text-center mb-6">
+          <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center text-4xl mx-auto mb-3">🦅</div>
+          <h1 className="text-2xl font-extrabold text-gray-900">Sıra sizde{parentName?`, ${parentName.split(' ')[0]}`:''}!</h1>
+          <p className="text-gray-400 text-sm mt-1">{parentQs.length} soru — veli puanı x1.5!</p>
+        </div>
         <div className="bg-white rounded-3xl shadow-xl p-6 mb-5">
           {[{icon:'💡',text:'Sorular çocuktan farklı'},{icon:'⚡',text:'Hızlı ve doğru = bonus puan'},{icon:'🏆',text:'Veli puanı 1.5 kat!'}].map(r => (
             <div key={r.text} className="flex items-center gap-3 py-3 border-b border-gray-50 last:border-0">
@@ -293,9 +322,7 @@ export default function GamePlayPage() {
             </div>
           ))}
         </div>
-        <button onClick={startParent} className="w-full py-5 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xl rounded-2xl shadow-lg transition-colors">
-          🚀 Başla!
-        </button>
+        <button onClick={startParent} className="w-full py-5 bg-purple-600 text-white font-extrabold text-xl rounded-2xl shadow-lg">🚀 Başla!</button>
       </div>
     </div>
   )
@@ -307,7 +334,6 @@ export default function GamePlayPage() {
           <div className="text-6xl mb-3">{finalResult.already_played?'🔄':'🏆'}</div>
           <div className="text-6xl font-extrabold text-[#1B4332] mb-1">{finalResult.total_score}</div>
           <div className="text-gray-400 text-sm mb-4">Toplam Puan</div>
-          {finalResult.already_played && <div className="text-amber-500 text-sm font-semibold mb-3">Bu oyunu daha önce oynadınız</div>}
           <div className="border-t border-gray-100 pt-4">
             <div className="font-bold text-gray-900">{finalResult.student_name}</div>
             {finalResult.parent_name && finalResult.parent_name !== 'Veli' && <div className="text-gray-400 text-sm">{finalResult.parent_name}</div>}
@@ -316,7 +342,7 @@ export default function GamePlayPage() {
 
         {finalResult.breakdown && finalResult.breakdown.length > 0 && (
           <div className="bg-white rounded-3xl shadow-xl p-5 mb-4">
-            <div className="text-sm font-bold text-gray-700 mb-3">Sonuçlar</div>
+            <div className="text-sm font-bold text-gray-700 mb-3">Soru Sonuçları</div>
             <div className="space-y-2">
               {finalResult.breakdown.map((b: any, i: number) => (
                 <div key={i} className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl', b.is_correct?'bg-green-50':'bg-red-50')}>
@@ -324,7 +350,7 @@ export default function GamePlayPage() {
                     {b.is_correct?'✓':'✗'}
                   </div>
                   <div className="flex-1 text-xs">
-                    <span className="text-gray-500">{b.player==='child'?'👦 Öğrenci':'👨 Veli'}</span>
+                    <span className="text-gray-500 font-semibold">{b.player==='child'?'👦 Öğrenci':'👨 Veli'}</span>
                     <span className={cn('ml-2 font-bold', b.is_correct?'text-green-600':'text-red-500')}>{b.is_correct?'Doğru':'Yanlış'}</span>
                   </div>
                   <div className="font-bold text-gray-700 text-sm">+{b.score}</div>
@@ -334,9 +360,9 @@ export default function GamePlayPage() {
           </div>
         )}
 
-        <button onClick={loadLB}
-          className="w-full py-5 bg-[#1B4332] hover:bg-green-800 text-white font-extrabold text-lg rounded-2xl shadow-lg transition-colors">
-          🏆 Puan Tablosunu Gör
+        <button onClick={loadLB} disabled={lbLoading}
+          className="w-full py-5 bg-[#1B4332] text-white font-extrabold text-lg rounded-2xl shadow-lg disabled:opacity-60">
+          {lbLoading ? '⏳ Yükleniyor...' : '🏆 Puan Tablosunu Gör'}
         </button>
       </div>
     </div>
@@ -346,7 +372,7 @@ export default function GamePlayPage() {
     <div className="min-h-screen bg-gray-50 p-4 pb-10">
       <div className="max-w-sm mx-auto">
         <div className="text-center mb-6 pt-4">
-          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-2 shadow">🏆</div>
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-2">🏆</div>
           <h2 className="text-2xl font-extrabold text-gray-900">Puan Tablosu</h2>
           <p className="text-gray-400 text-sm">{game?.game_date}</p>
         </div>
@@ -357,8 +383,7 @@ export default function GamePlayPage() {
               const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`
               const isMe = e.name === studentName
               return (
-                <div key={i} className={cn('bg-white rounded-2xl shadow-sm flex items-center gap-3 px-4 py-4 border-2 transition-all',
-                  isMe?'border-amber-400 bg-amber-50':'border-transparent')}>
+                <div key={i} className={cn('bg-white rounded-2xl shadow-sm flex items-center gap-3 px-4 py-4 border-2', isMe?'border-amber-400 bg-amber-50':'border-transparent')}>
                   <div className="text-2xl w-8 text-center flex-shrink-0">{medal}</div>
                   <div className="flex-1 min-w-0">
                     <div className={cn('font-bold text-sm', isMe?'text-amber-700':'text-gray-900')}>{e.name}{isMe&&' 👈'}</div>
@@ -369,9 +394,9 @@ export default function GamePlayPage() {
             })
           }
         </div>
-        <button onClick={loadLB}
-          className="w-full py-3 bg-white border border-gray-200 text-gray-600 font-semibold rounded-2xl text-sm shadow-sm hover:bg-gray-50 transition-colors">
-          🔄 Yenile
+        <button onClick={loadLB} disabled={lbLoading}
+          className="w-full py-3 bg-white border border-gray-200 text-gray-600 font-semibold rounded-2xl text-sm shadow-sm hover:bg-gray-50 disabled:opacity-50">
+          {lbLoading ? '⏳ Yükleniyor...' : '🔄 Yenile'}
         </button>
       </div>
     </div>
