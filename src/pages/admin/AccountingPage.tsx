@@ -79,6 +79,134 @@ function kasaColor(colorId:string) {
 
 const thisMonth = new Date().toISOString().slice(0, 7)
 
+async function exportPDF(kasalar: Kasa[], entries: Entry[], start: string, end: string, selectedKasaId: string) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+
+  const filteredEntries = entries.filter(e => {
+    const inDate = e.date >= start && e.date <= end
+    const inKasa = !selectedKasaId || e.kasaId === selectedKasaId || e.toKasaId === selectedKasaId
+    return inDate && inKasa
+  })
+
+  const gelir = filteredEntries.filter(e => e.type === 'gelir').reduce((a, e) => a + e.amount, 0)
+  const gider = filteredEntries.filter(e => e.type === 'gider').reduce((a, e) => a + e.amount, 0)
+
+  // Başlık
+  doc.setFontSize(16)
+  doc.setFont('helvetica', 'bold')
+  doc.text('MUHASEBE RAPORU', 105, 20, { align: 'center' })
+
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`Donem: ${start} - ${end}`, 105, 28, { align: 'center' })
+  doc.text(`Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')}`, 105, 34, { align: 'center' })
+
+  // Özet kutusu
+  doc.setFillColor(240, 250, 244)
+  doc.rect(15, 40, 180, 24, 'F')
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'bold')
+  doc.text('OZET', 20, 48)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`Toplam Gelir: ${gelir.toLocaleString('tr-TR')} TL`, 20, 55)
+  doc.text(`Toplam Gider: ${gider.toLocaleString('tr-TR')} TL`, 90, 55)
+  doc.text(`Net: ${(gelir - gider).toLocaleString('tr-TR')} TL`, 160, 55)
+
+  let y = 72
+
+  // Hareket tablosu başlıkları
+  doc.setFillColor(27, 67, 50)
+  doc.rect(15, y - 5, 180, 8, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Tarih', 17, y)
+  doc.text('Tur', 40, y)
+  doc.text('Aciklama', 60, y)
+  doc.text('Tutar', 130, y)
+  doc.text('Fis', 155, y)
+  doc.setTextColor(0, 0, 0)
+  y += 8
+
+  for (const e of filteredEntries) {
+    if (y > 250) {
+      doc.addPage()
+      y = 20
+    }
+
+    const isGelir = e.type === 'gelir'
+    const isGider = e.type === 'gider'
+
+    // Zebra satır
+    if (filteredEntries.indexOf(e) % 2 === 0) {
+      doc.setFillColor(248, 250, 252)
+      doc.rect(15, y - 4, 180, isGider && e.receipt_url ? 30 : 10, 'F')
+    }
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.text(e.date, 17, y)
+    doc.text(e.type === 'gelir' ? 'Gelir' : e.type === 'gider' ? 'Gider' : 'Transfer', 40, y)
+
+    const desc = e.description.length > 35 ? e.description.slice(0, 35) + '...' : e.description
+    doc.text(desc, 60, y)
+
+    doc.setFont('helvetica', 'bold')
+    if (isGelir) doc.setTextColor(22, 163, 74)
+    else if (isGider) doc.setTextColor(220, 38, 38)
+    else doc.setTextColor(124, 58, 237)
+    doc.text(`${isGelir ? '+' : isGider ? '-' : '↔'}${e.amount.toLocaleString('tr-TR')} TL`, 130, y)
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'normal')
+
+    // Fiş görseli
+    if (e.receipt_url) {
+      try {
+        const imgRes = await fetch(e.receipt_url)
+        const blob = await imgRes.blob()
+        const reader = new FileReader()
+        const dataUrl: string = await new Promise(res => {
+          reader.onload = () => res(reader.result as string)
+          reader.readAsDataURL(blob)
+        })
+        const ext = e.receipt_url.split('.').pop()?.toLowerCase() || 'jpg'
+        const fmt = ext === 'png' ? 'PNG' : 'JPEG'
+        doc.addImage(dataUrl, fmt, 155, y - 3, 35, 25)
+        y += 30
+      } catch {
+        doc.text('(Fis yuklenemedi)', 155, y)
+        y += 10
+      }
+    } else {
+      doc.setTextColor(180, 180, 180)
+      doc.text('Fis yok', 155, y)
+      doc.setTextColor(0, 0, 0)
+      y += 10
+    }
+
+    // Bağışçı varsa alt satır
+    if (e.donor) {
+      doc.setFontSize(7)
+      doc.setTextColor(100, 100, 100)
+      doc.text(`Bagisci: ${e.donor}`, 60, y - 7)
+      doc.setTextColor(0, 0, 0)
+    }
+
+    // Ayırıcı çizgi
+    doc.setDrawColor(230, 230, 230)
+    doc.line(15, y - 2, 195, y - 2)
+  }
+
+  // Alt bilgi
+  doc.setFontSize(8)
+  doc.setTextColor(150, 150, 150)
+  doc.text('Mesyo Soft - Muhasebe Raporu', 105, 287, { align: 'center' })
+
+  const kasaAdi = selectedKasaId ? (kasalar.find(k => k.id === selectedKasaId)?.name || 'Kasa') : 'Tum-Kasalar'
+  doc.save(`muhasebe-${kasaAdi}-${start}-${end}.pdf`)
+}
+
 function exportKasaXLSX(kasa:Kasa, entries:Entry[], allKasalar:Kasa[], start:string, end:string) {
   const ents = entries.filter(e => (e.kasaId===kasa.id || e.toKasaId===kasa.id) && e.date>=start && e.date<=end)
   const gelir = ents.filter(e=>e.type==='gelir'||(e.type==='transfer'&&e.toKasaId===kasa.id)).reduce((a,e)=>a+e.amount,0)
@@ -790,7 +918,7 @@ export default function AccountingPage() {
 
             <div className="text-xs text-gray-400 text-center mb-4">{rptEntries.length} kayıt · {rptStart} — {rptEnd}</div>
 
-            {/* Excel butonları */}
+            {/* Excel ve PDF butonları */}
             <div className="space-y-2">
               <button onClick={()=>{
                 if(!rptEntries.length){toast('Rapor için kayıt bulunamadı','error');return}
@@ -798,7 +926,19 @@ export default function AccountingPage() {
                 if(k) exportKasaXLSX(k,rptEntries,kasalar,rptStart,rptEnd)
                 toast('Excel indiriliyor ⬇️','success')
               }} className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-sm transition-colors">
-                ⬇ {rptKasa?kasalar.find(k=>k.id===rptKasa)?.name+' Raporu':'Seçili Raporu'} İndir
+                ⬇ {rptKasa?kasalar.find(k=>k.id===rptKasa)?.name+' Raporu':'Seçili Raporu'} Excel
+              </button>
+              <button onClick={async ()=>{
+                if(!rptEntries.length){toast('Rapor için kayıt bulunamadı','error');return}
+                toast('PDF hazırlanıyor, lütfen bekleyin... ⏳','info')
+                try {
+                  await exportPDF(kasalar, rptEntries, rptStart, rptEnd, rptKasa)
+                  toast('PDF indirildi ✅','success')
+                } catch(err:any) {
+                  toast(err.message||'PDF oluşturulamadı','error')
+                }
+              }} className="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-sm transition-colors">
+                📄 PDF İndir (Fişlerle Birlikte)
               </button>
               {!rptKasa && (
                 <button onClick={()=>{
