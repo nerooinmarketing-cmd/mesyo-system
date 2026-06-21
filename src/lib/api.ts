@@ -1,6 +1,6 @@
 import type { Institution, AuthUser, Season, Classroom, Student, Teacher, SuperadminStats } from '@/types'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://91.98.129.128:8200/api'
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 function getToken(): string | null { return localStorage.getItem('mesyo_token') }
 
