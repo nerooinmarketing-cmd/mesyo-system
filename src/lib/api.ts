@@ -304,3 +304,12 @@ export const gameApi = {
   deleteDailyGame: (id: string) => req(`/game/calendar/${id}`, { method: 'DELETE' }),
   participants: (gameId: string) => req<any>(`/game/calendar/${gameId}/participants`),
 }
+
+// ── SOHBET ────────────────────────────────────────────────────────────────────
+export const sohbetApi = {
+  list: () => req<any[]>('/sohbet/list'),
+  create: (data: any) => req<any>('/sohbet/list', { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id: string) => req(`/sohbet/list/${id}`, { method: 'DELETE' }),
+  kayitlar: (id: string) => req<any[]>(`/sohbet/list/${id}/kayitlar`),
+  arsiv: () => req<any[]>('/sohbet/arsiv'),
+}

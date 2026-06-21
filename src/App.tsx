@@ -6,6 +6,7 @@ import { ToastProvider } from '@/components/ui'
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/public/RegisterPage'
 import GamePlayPage from '@/pages/public/GamePlayPage'
+import SohbetKayitPage from '@/pages/public/SohbetKayitPage'
 import StudentProfilePage from '@/pages/admin/StudentProfilePage'
 
 import ModulesPage from '@/pages/superadmin/ModulesPage'
@@ -24,6 +25,7 @@ import AssetReportPage from '@/pages/public/AssetReportPage'
 
 import NotificationsPage from '@/pages/admin/NotificationsPage'
 import AnnouncementsPage from '@/pages/admin/AnnouncementsPage'
+import SohbetPage from '@/pages/admin/SohbetPage'
 import QRRegisterPage from '@/pages/admin/QRRegisterPage'
 import ProgressReportPage from '@/pages/admin/ProgressReportPage'
 import AccountingPage from '@/pages/admin/AccountingPage'
@@ -108,6 +110,7 @@ export default function App() {
             <Route path="/admin/address"       element={<Guard roles={['institution_admin','superadmin']}><AddressPage /></Guard>} />
             <Route path="/admin/notifications"  element={<Guard roles={['institution_admin','superadmin']}><NotificationsPage /></Guard>} />
             <Route path="/admin/announcements"  element={<Guard roles={['institution_admin','superadmin']}><AnnouncementsPage /></Guard>} />
+            <Route path="/admin/sohbetler"      element={<Guard roles={['institution_admin','superadmin']}><SohbetPage /></Guard>} />
             <Route path="/admin/qr-register"    element={<Guard roles={['institution_admin','superadmin']}><QRRegisterPage /></Guard>} />
             <Route path="/admin/progress"       element={<Guard roles={['institution_admin','superadmin']}><ProgressReportPage /></Guard>} />
             <Route path="/admin/game"          element={<Guard roles={['institution_admin','superadmin']}><GameAdminPage /></Guard>} />
@@ -128,6 +131,7 @@ export default function App() {
             <Route path="/skor/:slug"         element={<ScorePage />} />
             <Route path="/kayit/:slug" element={<RegisterPage />} />
             <Route path="/oyun/:gameId" element={<GamePlayPage />} />
+            <Route path="/sohbet/:sohbetId" element={<SohbetKayitPage />} />
             <Route path="/admin/students/:id" element={<Guard roles={['institution_admin','superadmin']}><StudentProfilePage /></Guard>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
