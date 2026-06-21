@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { Card, CardHeader, CardTitle, CardBody, Button, Badge, Alert, useToast, EmptyState } from '@/components/ui'
 import { waLink, absenceMessage, dateRangeDays, cn, todayISO } from '@/lib/utils'
-import { classroomsApi, studentsApi, attendanceApi } from '@/lib/api'
+import { classroomsApi, studentsApi, attendanceApi, institutionApi } from '@/lib/api'
 import * as XLSX from 'xlsx'
 
 type Tab = 'gunluk' | 'ogretmen' | 'rapor'
@@ -23,6 +23,7 @@ function exportAttXLSX(data: any[], filename: string) {
 export default function AttendancePage() {
   const {toast} = useToast()
   const [tab, setTab] = useState<Tab>('gunluk')
+  const [instName, setInstName] = useState('Kurumumuz')
 
   const [classrooms, setClassrooms] = useState<any[]>([])
   const [loadingClassrooms, setLoadingClassrooms] = useState(true)
@@ -48,6 +49,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     classroomsApi.list().then(setClassrooms).catch(() => {}).finally(() => setLoadingClassrooms(false))
+    institutionApi.me().then((d: any) => setInstName(d?.name || 'Kurumumuz')).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -211,7 +213,7 @@ export default function AttendancePage() {
                 {clsStudents.map(s=>{
                   const status = attendance[s.id]
                   const fullName = `${s.first_name} ${s.last_name}`
-                  const parentName = `${s.parent_first_name} ${s.parent_last_name}`
+                  const parentName = s.parent_name || `${s.parent_first_name || ''} ${s.parent_last_name || ''}`.trim() || 'Veli'
                   return (
                     <div key={s.id} className={cn('bg-white rounded-xl shadow-sm border-2 overflow-hidden transition-all',
                       status==='present'?'border-green-300 bg-green-50':status==='absent'?'border-red-300 bg-red-50':'border-gray-100')}>
@@ -237,7 +239,7 @@ export default function AttendancePage() {
                       </div>
                       {status==='absent' && (
                         <div className="px-4 pb-3 border-t border-red-200">
-                          <a href={waLink(s.parent_phone, absenceMessage(fullName,parentName,cls?.name||'',selDate))}
+                          <a href={waLink(s.parent_phone, absenceMessage(fullName,parentName,cls?.name||'',selDate,instName))}
                             target="_blank" rel="noreferrer"
                             className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-[#25D366] text-white text-xs font-semibold rounded-lg">
                             📱 Veliye WhatsApp Bildir
@@ -254,8 +256,8 @@ export default function AttendancePage() {
                 {absents.length>0 && (
                   <button onClick={()=>absents.forEach((s,i)=>{
                     const fullName = `${s.first_name} ${s.last_name}`
-                    const parentName = `${s.parent_first_name} ${s.parent_last_name}`
-                    setTimeout(()=>window.open(waLink(s.parent_phone,absenceMessage(fullName,parentName,cls?.name||'',selDate)),'_blank'),i*700)
+                    const parentName = s.parent_name || `${s.parent_first_name || ''} ${s.parent_last_name || ''}`.trim() || 'Veli'
+                    setTimeout(()=>window.open(waLink(s.parent_phone,absenceMessage(fullName,parentName,cls?.name||'',selDate,instName)),'_blank'),i*700)
                   })}
                     className="flex items-center gap-1.5 px-4 py-2 bg-[#25D366] text-white text-sm font-bold rounded-lg">
                     📱 {absents.length} Devamsıza Bildir

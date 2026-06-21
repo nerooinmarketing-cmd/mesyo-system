@@ -37,63 +37,67 @@ export function waLink(phone: string, message: string): string {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`
 }
 
-// Devamsızlık bildirimi — samimi, naif, şık
+// Devamsızlık bildirimi
 export function absenceMessage(
   studentName: string,
   parentName: string,
   classroomName: string,
-  date: string
+  date: string,
+  institutionName: string = 'Kurumumuz'
 ): string {
-  return `Sayın ${parentName} 👋
+  return `🌿 Sayın ${parentName},
 
-${studentName}'in bugün (${date}) eğitim programına katılamadığını fark ettik.
+📚 *${studentName}*, bugün (${date}) eğitim programına katılamadı.
 
-Umarız her şey yolundadır. Bir durum varsa bizimle paylaşmaktan çekinmeyin.
+Umarız her şey yolundadır. Bir durum varsa bizimle paylaşmaktan çekinmeyin. 🤲
 
-Sevgi ve saygılarımızla 🌿
-Mesyo Eğitim`
+Sevgi ve saygılarımızla,
+🕌 *${institutionName}*`
 }
 
-// Ödev bildirimi — samimi, naif, şık
+// Ödev bildirimi
 export function assignmentMessage(
   studentName: string,
   parentName: string,
   classroomName: string,
   title: string,
   description: string,
-  dueDate?: string
+  dueDate?: string,
+  institutionName: string = 'Kurumumuz'
 ): string {
   const dueText = dueDate
     ? `\n📅 Teslim tarihi: ${new Date(dueDate).toLocaleDateString('tr-TR')}`
     : ''
-  return `Sayın ${parentName} 👋
+  return `🌿 Sayın ${parentName},
 
-${studentName} için ${classroomName} dersinden yeni bir çalışmamız var:
+📚 *${studentName}* için *${classroomName}* dersinden yeni bir çalışma var:
 
 ✏️ *${title}*
 ${description}${dueText}
 
-Desteğiniz için teşekkür ederiz 🌿
+Desteğiniz için teşekkür ederiz. 🤲
+
 Sevgi ve saygılarımızla,
-Mesyo Eğitim`
+🕌 *${institutionName}*`
 }
 
-// Sezon daveti — arşivdeki velilere
+// Sezon daveti
 export function inviteMessage(
   parentName: string,
   studentName: string,
-  nextYear: number
+  nextYear: number,
+  institutionName: string = 'Kurumumuz'
 ): string {
-  return `Sayın ${parentName} 👋
+  return `🌿 Sayın ${parentName},
 
-${studentName}'in geçen yıl aramızda olması bizim için çok değerliydi.
+📚 *${studentName}*'in geçen yıl aramızda olması bizim için çok değerliydi.
 
-${nextYear} yılı eğitim programımız yakında başlıyor. ${studentName}'i tekrar aramızda görmekten mutluluk duyarız 💚
+${nextYear} yılı eğitim programımız yakında başlıyor. *${studentName}*'i tekrar aramızda görmekten mutluluk duyarız. 💚
 
 Kayıt ve bilgi için lütfen bizimle iletişime geçiniz.
 
-Sevgi ve saygılarımızla 🌿
-Mesyo Eğitim`
+Sevgi ve saygılarımızla,
+🕌 *${institutionName}*`
 }
 
 export function cn(...classes: (string | undefined | null | false)[]): string {

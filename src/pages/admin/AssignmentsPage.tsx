@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { Button, useToast, Alert } from '@/components/ui'
 import { waLink, assignmentMessage } from '@/lib/utils'
-import { classroomsApi, studentsApi, assignmentsApi, seasonsApi } from '@/lib/api'
+import { classroomsApi, studentsApi, assignmentsApi, seasonsApi, institutionApi } from '@/lib/api'
 
 export default function AssignmentsPage() {
   const { toast } = useToast()
-
+  const [instName, setInstName] = useState('Kurumumuz')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [classrooms, setClassrooms] = useState<any[]>([])
@@ -24,6 +24,7 @@ export default function AssignmentsPage() {
   const [tab, setTab] = useState<'gonder'|'gecmis'>('gonder')
 
   useEffect(() => {
+    institutionApi.me().then((d: any) => setInstName(d?.name || 'Kurumumuz')).catch(() => {})
     let cancelled = false
     async function load() {
       setLoading(true)
@@ -65,7 +66,7 @@ export default function AssignmentsPage() {
     setSending(true); setSentIdx(0)
     targets.forEach((s, i) => {
       setTimeout(() => {
-        window.open(waLink(s.parent_phone, assignmentMessage((s.first_name + ' ' + s.last_name), (s.parent_first_name + ' ' + s.parent_last_name), cls?.name || '', title, desc, dueDate || undefined)), '_blank')
+        window.open(waLink(s.parent_phone, assignmentMessage((s.first_name + ' ' + s.last_name), (s.parent_name || (s.parent_first_name + ' ' + s.parent_last_name) || 'Veli'), cls?.name || '', title, desc, dueDate || undefined, instName)), '_blank')
         setSentIdx(i + 1)
       }, i * 700)
     })
@@ -88,7 +89,7 @@ export default function AssignmentsPage() {
 
   const sendSingle = (s: typeof clsStudents[0]) => {
     if (!title.trim() || !desc.trim()) { toast('Önce başlık ve açıklama yazın', 'error'); return }
-    window.open(waLink(s.parent_phone, assignmentMessage((s.first_name + ' ' + s.last_name), (s.parent_first_name + ' ' + s.parent_last_name), cls?.name || '', title, desc, dueDate || undefined)), '_blank')
+    window.open(waLink(s.parent_phone, assignmentMessage((s.first_name + ' ' + s.last_name), (s.parent_name || (s.parent_first_name + ' ' + s.parent_last_name) || 'Veli'), cls?.name || '', title, desc, dueDate || undefined, instName)), '_blank')
     toast(`${(s.first_name + ' ' + s.last_name)} için ödev gönderildi 📱`, 'success')
   }
 
