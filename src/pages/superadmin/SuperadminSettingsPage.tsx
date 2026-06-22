@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SuperadminLayout } from '@/components/layout/SuperadminLayout'
 import { Button, useToast } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
+import { authApi } from '@/lib/api'
 
 export default function SuperadminSettingsPage() {
   const { user, logout } = useAuth()
@@ -10,6 +11,53 @@ export default function SuperadminSettingsPage() {
   const [newPw, setNewPw] = useState('')
   const [newPw2, setNewPw2] = useState('')
   const [saving, setSaving] = useState(false)
+  const [savingPayment, setSavingPayment] = useState(false)
+
+  const [payment, setPayment] = useState({
+    iban: '',
+    bank: '',
+    name: '',
+    amount: '3000',
+    note: 'Kurum adınız + Mesyo Soft ödeme',
+  })
+
+  useEffect(() => {
+    const token = localStorage.getItem('mesyo_token')
+    fetch('/api/superadmin/settings', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).then((data: any[]) => {
+      const map: Record<string, string> = {}
+      data.forEach((s: any) => { map[s.key] = s.value })
+      setPayment({
+        iban: map['payment_iban'] || '',
+        bank: map['payment_bank'] || '',
+        name: map['payment_name'] || '',
+        amount: map['payment_amount'] || '3000',
+        note: map['payment_note'] || '',
+      })
+    }).catch(() => {})
+  }, [])
+
+  const savePayment = async () => {
+    setSavingPayment(true)
+    try {
+      const token = localStorage.getItem('mesyo_token')
+      await fetch('/api/superadmin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify([
+          { key: 'payment_iban', value: payment.iban },
+          { key: 'payment_bank', value: payment.bank },
+          { key: 'payment_name', value: payment.name },
+          { key: 'payment_amount', value: payment.amount },
+          { key: 'payment_note', value: payment.note },
+        ])
+      })
+      toast('Ödeme bilgileri kaydedildi ✅', 'success')
+    } catch {
+      toast('Kaydedilemedi', 'error')
+    } finally {
+      setSavingPayment(false)
+    }
+  }
 
   // Platform ayarları
   const [platform, setPlatform] = useState({
@@ -96,6 +144,45 @@ export default function SuperadminSettingsPage() {
               Şifreyi Güncelle
             </Button>
           </div>
+        </div>
+
+        {/* Ödeme Bilgileri */}
+        <div className="bg-white rounded-xl shadow-sm p-5 md:col-span-2 border-2 border-green-100">
+          <div className="text-sm font-bold text-gray-900 mb-1">💳 Ödeme / IBAN Bilgileri</div>
+          <div className="text-xs text-gray-400 mb-4">Kurumlar "Üyeliği Yükselt" butonuna tıkladığında bu bilgileri görür</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">IBAN</label>
+              <input value={payment.iban} onChange={e => setPayment(p => ({...p, iban: e.target.value}))}
+                placeholder="TR00 0000 0000 0000 0000 0000 00"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500 font-mono"/>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Banka Adı</label>
+              <input value={payment.bank} onChange={e => setPayment(p => ({...p, bank: e.target.value}))}
+                placeholder="Ziraat Bankası"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500"/>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Hesap Sahibi</label>
+              <input value={payment.name} onChange={e => setPayment(p => ({...p, name: e.target.value}))}
+                placeholder="Ad Soyad"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500"/>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Yıllık Ücret (₺)</label>
+              <input value={payment.amount} onChange={e => setPayment(p => ({...p, amount: e.target.value}))}
+                placeholder="3000"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500"/>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase">Açıklama Notu</label>
+              <input value={payment.note} onChange={e => setPayment(p => ({...p, note: e.target.value}))}
+                placeholder="Kurum adınız + Mesyo Soft ödeme"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500"/>
+            </div>
+          </div>
+          <Button onClick={savePayment} loading={savingPayment}>💾 Kaydet</Button>
         </div>
 
         {/* Platform Ayarları */}

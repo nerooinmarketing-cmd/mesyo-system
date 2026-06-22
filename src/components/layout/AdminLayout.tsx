@@ -49,6 +49,9 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [showUpgrade, setShowUpgrade] = useState(false)
+  const [paymentInfo, setPaymentInfo] = useState<any>(null)
+  const [loadingPayment, setLoadingPayment] = useState(false)
 
   // Ödeme durumu
   const [paymentDue, setPaymentDue] = useState<string | null>(null)
@@ -189,6 +192,11 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
                 <KeyRound size={16} className="text-gray-400" /><span>Şifre Değiştir</span>
               </button>
               <div className="h-px bg-gray-100" />
+              <button onClick={() => setShowUpgrade(true)}
+                className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-green-600 hover:bg-green-50 transition-colors font-semibold">
+                <span>💳</span><span>Üyeliği Yükselt / Yenile</span>
+              </button>
+              <div className="h-px bg-gray-100" />
               <button onClick={() => { logout(); window.location.href = '/login' }}
                 className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-red-500 hover:bg-red-50 transition-colors">
                 <LogOut size={16} /><span>Çıkış Yap</span>
@@ -245,6 +253,60 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
           ))}
         </nav>
       </div>
+
+      {/* Üyeliği Yükselt Modal */}
+      {showUpgrade && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowUpgrade(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl"
+            onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-5">
+              <div className="text-4xl mb-2">💳</div>
+              <h2 className="text-lg font-bold text-gray-900">Üyelik Yenileme / Yükseltme</h2>
+              <p className="text-xs text-gray-400 mt-1">Aşağıdaki banka hesabına ödeme yapın</p>
+            </div>
+            {!paymentInfo ? (
+              <div className="text-center py-4">
+                <button onClick={async () => {
+                  setLoadingPayment(true)
+                  try {
+                    const data = await fetch('/api/superadmin/settings/public').then(r => r.json())
+                    setPaymentInfo(data)
+                  } catch {}
+                  setLoadingPayment(false)
+                }} className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-bold">
+                  {loadingPayment ? '⏳ Yükleniyor...' : 'Ödeme Bilgilerini Göster'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-5">
+                <div className="bg-green-50 rounded-xl p-4 border border-green-100">
+                  <div className="text-xs font-bold text-green-700 uppercase mb-3">Banka Bilgileri</div>
+                  {[
+                    ['Banka', paymentInfo.payment_bank],
+                    ['Hesap Sahibi', paymentInfo.payment_name],
+                    ['IBAN', paymentInfo.payment_iban],
+                    ['Tutar', `₺${paymentInfo.payment_amount} + KDV`],
+                    ['Açıklama', paymentInfo.payment_note],
+                  ].map(([l, v]) => (
+                    <div key={l} className="flex items-start gap-3 py-2 border-b border-green-100 last:border-0">
+                      <span className="text-xs font-semibold text-green-600 w-28 flex-shrink-0">{l}</span>
+                      <span className="text-sm text-gray-800 font-mono break-all">{v}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-amber-50 rounded-xl p-3 text-xs text-amber-700 border border-amber-100">
+                  ⚠️ Ödeme sonrası dekontunuzu WhatsApp veya e-posta ile iletiniz. Üyeliğiniz 1 iş günü içinde aktive edilir.
+                </div>
+              </div>
+            )}
+            <button onClick={() => setShowUpgrade(false)}
+              className="w-full py-2.5 border border-gray-200 text-gray-600 font-semibold rounded-xl text-sm">
+              Kapat
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
