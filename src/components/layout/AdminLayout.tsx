@@ -53,6 +53,10 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
   const { activeNavItems, isActive } = useModules()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    egitim: true, oyunlar: false, iletisim: false, yonetim: false
+  })
+  const toggleGroup = (key: string) => setOpenGroups(p => ({ ...p, [key]: !p[key] }))
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [showUpgrade, setShowUpgrade] = useState(false)
   const [paymentInfo, setPaymentInfo] = useState<any>(null)
@@ -168,96 +172,142 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
             <span>Genel Bakış</span>
           </NavLink>
 
-          {/* EĞİTİM GRUBU */}
-          <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">Eğitim</div>
-          {[
-            { to: '/admin/students', label: 'Öğrenci', moduleId: 'students' },
-            { to: '/admin/registrations', label: 'Başvuru', moduleId: 'registrations', badge: true },
-            { to: '/admin/seasons', label: 'Sezonlar', moduleId: 'seasons' },
-            { to: '/admin/classrooms', label: 'Sınıf', moduleId: 'classrooms' },
-            { to: '/admin/teachers', label: 'Öğretmen', moduleId: 'teachers' },
-            { to: '/admin/assignments', label: 'Ödev', moduleId: 'assignments' },
-            { to: '/admin/attendance', label: 'Yoklama', moduleId: 'attendance' },
-          ].filter(i => isActive(i.moduleId) || ['seasons','classrooms','teachers'].includes(i.moduleId)).map(item => (
-            <NavLink key={item.to} to={item.to} onClick={() => setSidebarOpen(false)}
-              className={({ isActive: a }) => cn(
-                'flex items-center gap-3 pl-8 pr-5 py-2 text-sm transition-all border-l-[3px] border-transparent',
-                a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
-              )}>
-              <ICON_MAP_comp route={item.to} />
-              <span>{item.label}</span>
-              {item.badge && pendingCount > 0 && (
-                <span className="ml-auto bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingCount}</span>
-              )}
-            </NavLink>
-          ))}
-
           {/* ETKİNLİK TAKVİMİ */}
           {isActive('calendar') && (
-            <>
-              <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">Program</div>
-              <NavLink to="/admin/calendar" onClick={() => setSidebarOpen(false)}
-                className={({ isActive: a }) => cn(
-                  'flex items-center gap-3 px-5 py-2.5 text-sm transition-all border-l-[3px] border-transparent',
-                  a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
-                )}>
-                <Calendar size={17} className="flex-shrink-0" />
-                <span>Etkinlik Takvimi</span>
-              </NavLink>
-            </>
+            <NavLink to="/admin/calendar" onClick={() => setSidebarOpen(false)}
+              className={({ isActive: a }) => cn(
+                'flex items-center gap-3 px-5 py-2.5 text-sm transition-all border-l-[3px] border-transparent',
+                a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
+              )}>
+              <Calendar size={17} className="flex-shrink-0" />
+              <span>Etkinlik Takvimi</span>
+            </NavLink>
           )}
 
-          {/* OYUNLAR */}
+          {/* EĞİTİM - AKORDİYON */}
+          <button onClick={() => toggleGroup('egitim')}
+            className="flex items-center justify-between w-full px-5 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/7 transition-all">
+            <div className="flex items-center gap-3">
+              <School size={17} className="flex-shrink-0" />
+              <span className="font-semibold">Eğitim</span>
+            </div>
+            <ChevronUp size={14} className={cn('transition-transform', openGroups.egitim ? 'rotate-0' : 'rotate-180')} />
+          </button>
+          {openGroups.egitim && (
+            <div className="bg-black/10">
+              {[
+                { to: '/admin/students', label: 'Öğrenci', moduleId: 'students' },
+                { to: '/admin/registrations', label: 'Başvuru', moduleId: 'registrations', badge: true },
+                { to: '/admin/seasons', label: 'Sezonlar', moduleId: 'seasons' },
+                { to: '/admin/classrooms', label: 'Sınıf', moduleId: 'classrooms' },
+                { to: '/admin/teachers', label: 'Öğretmen', moduleId: 'teachers' },
+                { to: '/admin/assignments', label: 'Ödev', moduleId: 'assignments' },
+                { to: '/admin/attendance', label: 'Yoklama', moduleId: 'attendance' },
+              ].filter(i => isActive(i.moduleId) || ['seasons','classrooms','teachers'].includes(i.moduleId)).map(item => (
+                <NavLink key={item.to} to={item.to} onClick={() => setSidebarOpen(false)}
+                  className={({ isActive: a }) => cn(
+                    'flex items-center gap-3 pl-10 pr-5 py-2 text-sm transition-all border-l-[3px] border-transparent',
+                    a ? 'bg-white/10 text-white border-l-green-400 font-semibold' : 'text-white/60 hover:bg-white/7 hover:text-white'
+                  )}>
+                  <ICON_MAP_comp route={item.to} />
+                  <span>{item.label}</span>
+                  {item.badge && pendingCount > 0 && (
+                    <span className="ml-auto bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingCount}</span>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          )}
+
+          {/* OYUNLAR - AKORDİYON */}
           {isActive('game_admin') && (
             <>
-              <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">Oyunlar</div>
-              <NavLink to="/admin/game" onClick={() => setSidebarOpen(false)}
-                className={({ isActive: a }) => cn(
-                  'flex items-center gap-3 pl-8 pr-5 py-2 text-sm transition-all border-l-[3px] border-transparent',
-                  a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
-                )}>
-                <Star size={17} className="flex-shrink-0" />
-                <span>Kubbeler Yarışıyor</span>
-              </NavLink>
+              <button onClick={() => toggleGroup('oyunlar')}
+                className="flex items-center justify-between w-full px-5 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/7 transition-all">
+                <div className="flex items-center gap-3">
+                  <Star size={17} className="flex-shrink-0" />
+                  <span className="font-semibold">Oyunlar</span>
+                </div>
+                <ChevronUp size={14} className={cn('transition-transform', openGroups.oyunlar ? 'rotate-0' : 'rotate-180')} />
+              </button>
+              {openGroups.oyunlar && (
+                <div className="bg-black/10">
+                  <NavLink to="/admin/game" onClick={() => setSidebarOpen(false)}
+                    className={({ isActive: a }) => cn(
+                      'flex items-center gap-3 pl-10 pr-5 py-2 text-sm transition-all border-l-[3px] border-transparent',
+                      a ? 'bg-white/10 text-white border-l-green-400 font-semibold' : 'text-white/60 hover:bg-white/7 hover:text-white'
+                    )}>
+                    <Star size={15} className="flex-shrink-0" />
+                    <span>Kubbeler Yarışıyor</span>
+                  </NavLink>
+                </div>
+              )}
             </>
           )}
 
-          {/* İLETİŞİM */}
-          <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">İletişim</div>
-          {[
-            { to: '/admin/sohbetler', label: 'Sohbetler', moduleId: 'sohbetler' },
-            { to: '/admin/notifications', label: 'Bildirim Merkezi', moduleId: 'notifications' },
-            { to: '/admin/announcements', label: 'Toplu Duyuru', moduleId: 'announcements' },
-          ].filter(i => isActive(i.moduleId)).map(item => (
-            <NavLink key={item.to} to={item.to} onClick={() => setSidebarOpen(false)}
-              className={({ isActive: a }) => cn(
-                'flex items-center gap-3 px-5 py-2.5 text-sm transition-all border-l-[3px] border-transparent',
-                a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
-              )}>
-              <ICON_MAP_comp route={item.to} />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-
-          {/* YÖNETİM */}
-          {(isActive('assets') || isActive('accounting')) && (
-            <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">Yönetim</div>
+          {/* İLETİŞİM - AKORDİYON */}
+          {(isActive('sohbetler') || isActive('notifications') || isActive('announcements')) && (
+            <>
+              <button onClick={() => toggleGroup('iletisim')}
+                className="flex items-center justify-between w-full px-5 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/7 transition-all">
+                <div className="flex items-center gap-3">
+                  <ClipboardList size={17} className="flex-shrink-0" />
+                  <span className="font-semibold">İletişim</span>
+                </div>
+                <ChevronUp size={14} className={cn('transition-transform', openGroups.iletisim ? 'rotate-0' : 'rotate-180')} />
+              </button>
+              {openGroups.iletisim && (
+                <div className="bg-black/10">
+                  {[
+                    { to: '/admin/sohbetler', label: 'Sohbetler', moduleId: 'sohbetler' },
+                    { to: '/admin/notifications', label: 'Bildirim Merkezi', moduleId: 'notifications' },
+                    { to: '/admin/announcements', label: 'Toplu Duyuru', moduleId: 'announcements' },
+                  ].filter(i => isActive(i.moduleId)).map(item => (
+                    <NavLink key={item.to} to={item.to} onClick={() => setSidebarOpen(false)}
+                      className={({ isActive: a }) => cn(
+                        'flex items-center gap-3 pl-10 pr-5 py-2 text-sm transition-all border-l-[3px] border-transparent',
+                        a ? 'bg-white/10 text-white border-l-green-400 font-semibold' : 'text-white/60 hover:bg-white/7 hover:text-white'
+                      )}>
+                      <ICON_MAP_comp route={item.to} />
+                      <span>{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </>
           )}
-          {[
-            { to: '/admin/assets', label: 'Demirbaş', moduleId: 'assets' },
-            { to: '/admin/accounting', label: 'Ön Muhasebe', moduleId: 'accounting' },
-          ].filter(i => isActive(i.moduleId)).map(item => (
-            <NavLink key={item.to} to={item.to} onClick={() => setSidebarOpen(false)}
-              className={({ isActive: a }) => cn(
-                'flex items-center gap-3 px-5 py-2.5 text-sm transition-all border-l-[3px] border-transparent',
-                a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
-              )}>
-              <ICON_MAP_comp route={item.to} />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
 
+          {/* YÖNETİM - AKORDİYON */}
+          {(isActive('assets') || isActive('accounting')) && (
+            <>
+              <button onClick={() => toggleGroup('yonetim')}
+                className="flex items-center justify-between w-full px-5 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/7 transition-all">
+                <div className="flex items-center gap-3">
+                  <Archive size={17} className="flex-shrink-0" />
+                  <span className="font-semibold">Yönetim</span>
+                </div>
+                <ChevronUp size={14} className={cn('transition-transform', openGroups.yonetim ? 'rotate-0' : 'rotate-180')} />
+              </button>
+              {openGroups.yonetim && (
+                <div className="bg-black/10">
+                  {[
+                    { to: '/admin/assets', label: 'Demirbaş', moduleId: 'assets' },
+                    { to: '/admin/accounting', label: 'Ön Muhasebe', moduleId: 'accounting' },
+                  ].filter(i => isActive(i.moduleId)).map(item => (
+                    <NavLink key={item.to} to={item.to} onClick={() => setSidebarOpen(false)}
+                      className={({ isActive: a }) => cn(
+                        'flex items-center gap-3 pl-10 pr-5 py-2 text-sm transition-all border-l-[3px] border-transparent',
+                        a ? 'bg-white/10 text-white border-l-green-400 font-semibold' : 'text-white/60 hover:bg-white/7 hover:text-white'
+                      )}>
+                      <ICON_MAP_comp route={item.to} />
+                      <span>{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </nav>
         <div className="px-4 py-3 border-t border-white/10 flex-shrink-0 relative">
           {userMenuOpen && (
             <div className="absolute bottom-16 left-3 right-3 bg-white rounded-xl shadow-xl overflow-hidden z-10"
