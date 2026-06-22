@@ -428,6 +428,38 @@ function normalizeEntry(e: any): Entry {
 }
 
 // ─── ANA SAYFA ────────────────────────────────────────────────────────────────
+// Fotoğraf sıkıştırma — mobil uyumlu
+function compressImage(file: File, maxPx: number, quality: number): Promise<File> {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const ratio = Math.min(maxPx / img.width, maxPx / img.height, 1)
+        const w = Math.round(img.width * ratio)
+        const h = Math.round(img.height * ratio)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, w, h)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) resolve(new File([blob], 'receipt.jpg', { type: 'image/jpeg' }))
+            else resolve(file) // sıkıştırma başarısız → orijinali gönder
+          },
+          'image/jpeg',
+          quality
+        )
+      }
+      img.onerror = () => resolve(file)
+      img.src = e.target?.result as string
+    }
+    reader.onerror = () => resolve(file)
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function AccountingPage() {
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('kasalar')
@@ -773,7 +805,11 @@ export default function AccountingPage() {
                                         const file = ev.target.files?.[0]
                                         if (!file) return
                                         try {
-                                          const res = await accountingApi.uploadReceipt(String(e.id), file)
+                                          let uploadFile = file
+                                          if (file.type.startsWith('image/')) {
+                                            uploadFile = await compressImage(file, 1200, 0.7)
+                                          }
+                                          const res = await accountingApi.uploadReceipt(String(e.id), uploadFile)
                                           setEntries(p => p.map(x => x.id === e.id ? { ...x, receipt_url: res.receipt_url } : x))
                                           toast('Fiş yüklendi ✅', 'success')
                                         } catch (err: any) {
