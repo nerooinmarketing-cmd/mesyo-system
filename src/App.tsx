@@ -7,6 +7,7 @@ import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/public/RegisterPage'
 import GamePlayPage from '@/pages/public/GamePlayPage'
 import SohbetKayitPage from '@/pages/public/SohbetKayitPage'
+import KervanOyunPage from '@/pages/public/KervanOyunPage'
 import StudentProfilePage from '@/pages/admin/StudentProfilePage'
 
 import ModulesPage from '@/pages/superadmin/ModulesPage'
@@ -132,6 +133,7 @@ export default function App() {
             <Route path="/kayit/:slug" element={<RegisterPage />} />
             <Route path="/oyun/:gameId" element={<GamePlayPage />} />
             <Route path="/sohbet/:sohbetId" element={<SohbetKayitPage />} />
+            <Route path="/kervan/:familyId" element={<KervanOyunPage />} />
             <Route path="/admin/students/:id" element={<Guard roles={['institution_admin','superadmin']}><StudentProfilePage /></Guard>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
