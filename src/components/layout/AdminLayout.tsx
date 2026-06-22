@@ -240,6 +240,14 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
                     <Star size={15} className="flex-shrink-0" />
                     <span>Kubbeler Yarışıyor</span>
                   </NavLink>
+                  <NavLink to="/admin/kervan" onClick={() => setSidebarOpen(false)}
+                    className={({ isActive: a }) => cn(
+                      'flex items-center gap-3 pl-10 pr-5 py-2 text-sm transition-all border-l-[3px] border-transparent',
+                      a ? 'bg-white/10 text-white border-l-green-400 font-semibold' : 'text-white/60 hover:bg-white/7 hover:text-white'
+                    )}>
+                    <span className="text-sm">🐪</span>
+                    <span>Bilge Kervan</span>
+                  </NavLink>
                 </div>
               )}
             </>
