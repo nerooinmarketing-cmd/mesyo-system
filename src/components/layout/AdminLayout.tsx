@@ -43,6 +43,11 @@ const adminTools = [
 
 interface AdminLayoutProps { children: ReactNode; pendingCount?: number }
 
+const ICON_MAP_comp = ({ route }: { route: string }) => {
+  const Icon = ICON_MAP[route] || LayoutDashboard
+  return <Icon size={17} className="flex-shrink-0" />
+}
+
 export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
   const { user, logout } = useAuth()
   const { activeNavItems, isActive } = useModules()
@@ -153,18 +158,102 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2">
-          <div className="px-5 py-2 text-[10px] font-bold text-white/30 uppercase tracking-widest">Menü</div>
-          {navItems.map(item => (
+          {/* GENEL BAKIŞ */}
+          <NavLink to="/admin/dashboard" onClick={() => setSidebarOpen(false)}
+            className={({ isActive }) => cn(
+              'flex items-center gap-3 px-5 py-2.5 text-sm transition-all border-l-[3px] border-transparent',
+              isActive ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
+            )}>
+            <LayoutDashboard size={17} className="flex-shrink-0" />
+            <span>Genel Bakış</span>
+          </NavLink>
+
+          {/* EĞİTİM GRUBU */}
+          <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">Eğitim</div>
+          {[
+            { to: '/admin/students', label: 'Öğrenci', moduleId: 'students' },
+            { to: '/admin/registrations', label: 'Başvuru', moduleId: 'registrations', badge: true },
+            { to: '/admin/seasons', label: 'Sezonlar', moduleId: 'seasons' },
+            { to: '/admin/classrooms', label: 'Sınıf', moduleId: 'classrooms' },
+            { to: '/admin/teachers', label: 'Öğretmen', moduleId: 'teachers' },
+            { to: '/admin/assignments', label: 'Ödev', moduleId: 'assignments' },
+            { to: '/admin/attendance', label: 'Yoklama', moduleId: 'attendance' },
+          ].filter(i => isActive(i.moduleId) || ['seasons','classrooms','teachers'].includes(i.moduleId)).map(item => (
             <NavLink key={item.to} to={item.to} onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) => cn(
-                'flex items-center gap-3 px-5 py-2.5 text-sm transition-all border-l-[3px] border-transparent',
-                isActive ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
+              className={({ isActive: a }) => cn(
+                'flex items-center gap-3 pl-8 pr-5 py-2 text-sm transition-all border-l-[3px] border-transparent',
+                a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
               )}>
-              <item.icon size={17} className="flex-shrink-0" />
+              <ICON_MAP_comp route={item.to} />
               <span>{item.label}</span>
               {item.badge && pendingCount > 0 && (
                 <span className="ml-auto bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingCount}</span>
               )}
+            </NavLink>
+          ))}
+
+          {/* ETKİNLİK TAKVİMİ */}
+          {isActive('calendar') && (
+            <>
+              <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">Program</div>
+              <NavLink to="/admin/calendar" onClick={() => setSidebarOpen(false)}
+                className={({ isActive: a }) => cn(
+                  'flex items-center gap-3 px-5 py-2.5 text-sm transition-all border-l-[3px] border-transparent',
+                  a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
+                )}>
+                <Calendar size={17} className="flex-shrink-0" />
+                <span>Etkinlik Takvimi</span>
+              </NavLink>
+            </>
+          )}
+
+          {/* OYUNLAR */}
+          {isActive('game_admin') && (
+            <>
+              <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">Oyunlar</div>
+              <NavLink to="/admin/game" onClick={() => setSidebarOpen(false)}
+                className={({ isActive: a }) => cn(
+                  'flex items-center gap-3 pl-8 pr-5 py-2 text-sm transition-all border-l-[3px] border-transparent',
+                  a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
+                )}>
+                <Star size={17} className="flex-shrink-0" />
+                <span>Kubbeler Yarışıyor</span>
+              </NavLink>
+            </>
+          )}
+
+          {/* İLETİŞİM */}
+          <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">İletişim</div>
+          {[
+            { to: '/admin/sohbetler', label: 'Sohbetler', moduleId: 'sohbetler' },
+            { to: '/admin/notifications', label: 'Bildirim Merkezi', moduleId: 'notifications' },
+            { to: '/admin/announcements', label: 'Toplu Duyuru', moduleId: 'announcements' },
+          ].filter(i => isActive(i.moduleId)).map(item => (
+            <NavLink key={item.to} to={item.to} onClick={() => setSidebarOpen(false)}
+              className={({ isActive: a }) => cn(
+                'flex items-center gap-3 px-5 py-2.5 text-sm transition-all border-l-[3px] border-transparent',
+                a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
+              )}>
+              <ICON_MAP_comp route={item.to} />
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+
+          {/* YÖNETİM */}
+          {(isActive('assets') || isActive('accounting')) && (
+            <div className="px-5 pt-4 pb-1 text-[9px] font-bold text-white/30 uppercase tracking-widest">Yönetim</div>
+          )}
+          {[
+            { to: '/admin/assets', label: 'Demirbaş', moduleId: 'assets' },
+            { to: '/admin/accounting', label: 'Ön Muhasebe', moduleId: 'accounting' },
+          ].filter(i => isActive(i.moduleId)).map(item => (
+            <NavLink key={item.to} to={item.to} onClick={() => setSidebarOpen(false)}
+              className={({ isActive: a }) => cn(
+                'flex items-center gap-3 px-5 py-2.5 text-sm transition-all border-l-[3px] border-transparent',
+                a ? 'bg-white/10 text-white border-l-green-500 font-semibold' : 'text-white/70 hover:bg-white/7 hover:text-white'
+              )}>
+              <ICON_MAP_comp route={item.to} />
+              <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
