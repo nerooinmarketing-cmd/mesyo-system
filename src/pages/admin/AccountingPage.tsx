@@ -768,7 +768,7 @@ export default function AccountingPage() {
                                 ) : (
                                   <label className="cursor-pointer text-gray-300 hover:text-blue-400 text-lg transition-colors" title="Fiş Ekle">
                                     📷
-                                    <input type="file" accept="image/*,application/pdf" className="hidden"
+                                    <input type="file" accept="image/*,application/pdf" capture="environment" className="hidden"
                                       onChange={async (ev) => {
                                         const file = ev.target.files?.[0]
                                         if (!file) return
