@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { SuperadminLayout } from '@/components/layout/SuperadminLayout'
 import { Button, Modal, useToast, Alert } from '@/components/ui'
 import { waLink } from '@/lib/utils'
-import { applicationsApi } from '@/lib/api'
+import { applicationsApi, superadminApi } from '@/lib/api'
 
 // Kurum adından otomatik slug üret — backend'deki generate_slug_from_name() ile aynı mantık,
 // kullanıcıya anlık önizleme göstermek için burada da tekrarlanıyor (asıl üretim backend'de).
@@ -195,6 +195,17 @@ export default function ApplicationsPage() {
                       ❌ Reddet
                     </button>
                   </>}
+                  <button onClick={async()=>{
+                    if(!window.confirm(`"${app.name}" başvurusunu silmek istediğinize emin misiniz?`)) return
+                    try {
+                      await superadminApi.deleteApplication(app.id)
+                      setApps(p => p.filter(x => x.id !== app.id))
+                      toast('Başvuru silindi', 'success')
+                    } catch(e:any) { toast('Silinemedi: ' + e.message, 'error') }
+                  }}
+                    className="px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-500 text-xs font-bold rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-500 transition-colors">
+                    🗑️
+                  </button>
                 </div>
               </div>
             </div>

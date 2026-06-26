@@ -60,6 +60,10 @@ export const superadminApi = {
   institutionTeachers: (id: string) => req<Teacher[]>(`/superadmin/institutions/${id}/teachers`),
   impersonate: (institutionId: string) =>
     req<{ token: string; user: AuthUser }>(`/superadmin/impersonate/${institutionId}`, { method: 'POST' }),
+  deleteInstitution: (id: string) =>
+    req(`/superadmin/institutions/${id}`, { method: 'DELETE' }),
+  deleteApplication: (id: string) =>
+    req(`/superadmin/applications/${id}`, { method: 'DELETE' }),
 }
 
 // ── INSTITUTION ───────────────────────────────────────────────────────────────

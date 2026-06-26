@@ -179,6 +179,16 @@ export default function InstitutionsPage() {
                             className="px-2.5 py-1.5 bg-green-50 border border-green-200 text-green-700 text-xs font-semibold rounded-lg hover:bg-green-100 transition-colors">
                             Panel ↗
                           </button>
+                          <button onClick={async()=>{
+                            if(!window.confirm(`"${i.name}" kurumunu silmek istediğinize emin misiniz? Bu işlem geri alınamaz!`)) return
+                            try {
+                              await superadminApi.deleteInstitution(i.id)
+                              setInsts(p => p.filter(x => x.id !== i.id))
+                            } catch(e:any) { alert('Silinemedi: ' + e.message) }
+                          }}
+                            className="px-2.5 py-1.5 bg-red-50 border border-red-200 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-100 transition-colors">
+                            🗑️ Sil
+                          </button>
                         </div>
                       </td>
                     </tr>
