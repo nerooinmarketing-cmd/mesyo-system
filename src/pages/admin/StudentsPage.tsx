@@ -29,6 +29,9 @@ export default function StudentsPage() {
   const [editForm, setEditForm] = useState<any>({})
   const [savingEdit, setSavingEdit] = useState(false)
   const [waModal, setWaModal] = useState(false)
+  const [addModal, setAddModal] = useState(false)
+  const [addForm, setAddForm] = useState({ first_name: '', last_name: '', birth_date: '', gender: 'kiz', parent_name: '', parent_phone: '', classroom_id: '', mahalle: '' })
+  const [savingAdd, setSavingAdd] = useState(false)
 
   // İlk yükleme: sezonlar + sınıflar + öğrenciler.
   // Sezon henüz bilinmediği için önce sezonları çekip aktif olanı seçiyoruz,
@@ -100,6 +103,39 @@ export default function StudentsPage() {
   const toggleSel = (id: string) => setSelected(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
   const selAll = () => setSelected(new Set(filtered.map(s => s.id)))
   const clearSel = () => setSelected(new Set())
+
+  const addStudent = async () => {
+    if (!addForm.first_name || !addForm.last_name || !addForm.parent_name || !addForm.parent_phone) {
+      toast('Ad, soyad, veli adı ve telefon zorunlu', 'error'); return
+    }
+    setSavingAdd(true)
+    try {
+      const payload = {
+        first_name: addForm.first_name,
+        last_name: addForm.last_name,
+        full_name: `${addForm.first_name} ${addForm.last_name}`,
+        birth_date: addForm.birth_date || null,
+        gender: addForm.gender,
+        parent_name: addForm.parent_name,
+        parent_phone: addForm.parent_phone,
+        classroom_id: addForm.classroom_id || null,
+        mahalle: addForm.mahalle || null,
+        season_id: season,
+        status: 'approved',
+        registration_source: 'manual',
+        kvkk_consent: true,
+      }
+      const newStudent = await studentsApi.create(payload as any)
+      setStudents(prev => [newStudent, ...prev])
+      setAddModal(false)
+      setAddForm({ first_name: '', last_name: '', birth_date: '', gender: 'kiz', parent_name: '', parent_phone: '', classroom_id: '', mahalle: '' })
+      toast('Öğrenci eklendi ✅', 'success')
+    } catch (e: any) {
+      toast(e.message || 'Eklenemedi', 'error')
+    } finally {
+      setSavingAdd(false)
+    }
+  }
 
   const openEdit = (s: any) => {
     setEditForm({ ...s })
@@ -183,6 +219,10 @@ export default function StudentsPage() {
             </button>
           ))}
           <span className="text-xs text-gray-400 ml-auto">{counts.tumu} öğrenci</span>
+          <button onClick={() => setAddModal(true)}
+            className="px-3 py-1.5 bg-green-500 text-white text-xs font-bold rounded-full hover:bg-green-600 transition-colors">
+            + Öğrenci Ekle
+          </button>
         </div>
 
         {/* Cinsiyet sekmeleri */}
@@ -356,6 +396,80 @@ export default function StudentsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Öğrenci Ekle Modal */}
+      {addModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setAddModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-lg text-gray-900">➕ Öğrenci Ekle</h2>
+              <button onClick={() => setAddModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase">Ad *</label>
+                  <input value={addForm.first_name} onChange={e => setAddForm(p => ({ ...p, first_name: e.target.value }))}
+                    placeholder="Ahmet" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase">Soyad *</label>
+                  <input value={addForm.last_name} onChange={e => setAddForm(p => ({ ...p, last_name: e.target.value }))}
+                    placeholder="Yılmaz" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase">Doğum Tarihi</label>
+                  <input type="date" value={addForm.birth_date} onChange={e => setAddForm(p => ({ ...p, birth_date: e.target.value }))}
+                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase">Cinsiyet</label>
+                  <select value={addForm.gender} onChange={e => setAddForm(p => ({ ...p, gender: e.target.value }))}
+                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
+                    <option value="kiz">👧 Kız</option>
+                    <option value="erkek">👦 Erkek</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Veli Adı Soyadı *</label>
+                <input value={addForm.parent_name} onChange={e => setAddForm(p => ({ ...p, parent_name: e.target.value }))}
+                  placeholder="Mehmet Yılmaz" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Veli Telefonu *</label>
+                <input value={addForm.parent_phone} onChange={e => setAddForm(p => ({ ...p, parent_phone: e.target.value }))}
+                  placeholder="05xx xxx xx xx" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Sınıf</label>
+                <select value={addForm.classroom_id} onChange={e => setAddForm(p => ({ ...p, classroom_id: e.target.value }))}
+                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
+                  <option value="">-- Sınıf Seçiniz --</option>
+                  {classrooms.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Mahalle</label>
+                <input value={addForm.mahalle} onChange={e => setAddForm(p => ({ ...p, mahalle: e.target.value }))}
+                  placeholder="Mahalle adı" className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setAddModal(false)}
+                className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold">
+                İptal
+              </button>
+              <button onClick={addStudent} disabled={savingAdd}
+                className="flex-1 py-2.5 bg-green-500 text-white rounded-xl text-sm font-bold disabled:opacity-50">
+                {savingAdd ? '⏳ Kaydediliyor...' : '✅ Kaydet'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   )
 }
