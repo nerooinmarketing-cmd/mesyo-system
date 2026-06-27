@@ -51,7 +51,7 @@ export default function StudentImportPage() {
         const ws = wb.Sheets[wb.SheetNames[0]]
         const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
 
-        const parsed: ParsedStudent[] = rows.slice(0, 200).map((row, i) => {
+        const parsed: ParsedStudent[] = rows.map((row, i) => {
           const first_name = String(row['ADI *'] || row['ADI'] || row['Ad *'] || row['Ad'] || '').trim()
           const last_name = String(row['SOYADI *'] || row['SOYADI'] || row['Soyad *'] || row['Soyad'] || '').trim()
           const gender_raw = String(row['CİNSİYET *'] || row['CİNSİYET'] || row['Cinsiyet'] || 'kiz').trim().toLowerCase()
