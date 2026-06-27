@@ -24,6 +24,7 @@ export default function ClassroomsPage() {
   const [asnTchId, setAsnTchId] = useState('')
   const [asnSearch, setAsnSearch] = useState('')
   const [asnAge, setAsnAge] = useState('')
+  const [asnGender, setAsnGender] = useState('')
   const [selectedStd, setSelectedStd] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
 
@@ -59,12 +60,36 @@ export default function ClassroomsPage() {
   }, [])
 
   const unassigned = students.filter(s => !s.classroom_id)
+
+  // Gerçek veriden yaş grupları hesapla
+  const ageGroups = (() => {
+    const ages = unassigned.map(s => calcAge(s.birth_date)).filter(a => a > 0)
+    const min = Math.min(...ages)
+    const max = Math.max(...ages)
+    const groups: string[] = []
+    for (let a = min; a <= max; a++) groups.push(String(a))
+    return groups
+  })()
+
   const filteredUnassigned = unassigned.filter(s => {
     const q = asnSearch.toLowerCase()
     const mq = !q || (s.first_name + ' ' + s.last_name).toLowerCase().includes(q)
-    const ma = !asnAge || (()=>{const[mn,mx]=asnAge.split('-').map(Number);const a=calcAge(s.birth_date);return a>=mn&&a<=mx})()
-    return mq && ma
+    const ma = !asnAge || calcAge(s.birth_date) === parseInt(asnAge)
+    const mg = !asnGender || s.gender === asnGender
+    return mq && ma && mg
   })
+
+  // Yaş+cinsiyet kombinasyonu sayıları
+  const groupStats = (() => {
+    const stats: Record<string, number> = {}
+    unassigned.forEach(s => {
+      const age = calcAge(s.birth_date)
+      const g = s.gender === 'erkek' ? 'E' : 'K'
+      const key = `${age}-${g}`
+      stats[key] = (stats[key] || 0) + 1
+    })
+    return stats
+  })()
 
   const clsStudentCount = (cid: string) => students.filter(s => s.classroom_id === cid).length
 
@@ -243,19 +268,67 @@ export default function ClassroomsPage() {
       </Modal>
 
       {/* Öğrenci Seç */}
-      <Modal open={asnStdModal.open} onClose={() => setAsnStdModal(p=>({...p,open:false}))}
+      <Modal open={asnStdModal.open} onClose={() => { setAsnStdModal(p=>({...p,open:false})); setAsnSearch(''); setAsnAge(''); setAsnGender(''); setSelectedStd(new Set()) }}
         title={`👥 Öğrenci Seç — ${asnStdModal.clsName}`} wide
-        footer={<><Button variant="outline" onClick={() => setAsnStdModal(p=>({...p,open:false}))}>İptal</Button><Button onClick={assignStudents} loading={saving}>Seçilenleri Ata</Button></>}>
-        <div className="flex gap-2 mb-3 flex-wrap">
+        footer={<><Button variant="outline" onClick={() => setAsnStdModal(p=>({...p,open:false}))}>İptal</Button><Button onClick={assignStudents} loading={saving}>Seçilenleri Ata ({selectedStd.size})</Button></>}>
+
+        {/* Yaş-Cinsiyet hızlı seçim butonları */}
+        <div className="mb-3">
+          <div className="text-xs font-bold text-gray-400 uppercase mb-2">Yaş & Cinsiyet Grubu</div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(groupStats).sort().map(([key, count]) => {
+              const [age, g] = key.split('-')
+              const isKiz = g === 'K'
+              const isActive = asnAge === age && asnGender === (isKiz ? 'kiz' : 'erkek')
+              return (
+                <button key={key} onClick={() => {
+                  if (isActive) { setAsnAge(''); setAsnGender('') }
+                  else { setAsnAge(age); setAsnGender(isKiz ? 'kiz' : 'erkek') }
+                  setSelectedStd(new Set())
+                }} className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 transition-all ${
+                  isActive
+                    ? isKiz ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 text-gray-600 hover:border-gray-400'
+                }`}>
+                  {isKiz ? '👧' : '👦'} {age} yaş ({count})
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Filtreler */}
+        <div className="flex gap-2 mb-2 flex-wrap">
           <input type="text" placeholder="🔍 Ara..." value={asnSearch} onChange={e => setAsnSearch(e.target.value)}
             className="flex-1 min-w-32 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500" />
-          <select value={asnAge} onChange={e => setAsnAge(e.target.value)} className="px-2 py-2 border border-gray-200 rounded-lg text-sm outline-none">
+          <select value={asnAge} onChange={e => { setAsnAge(e.target.value); setSelectedStd(new Set()) }}
+            className="px-2 py-2 border border-gray-200 rounded-lg text-sm outline-none">
             <option value="">Tüm yaşlar</option>
-            <option value="7-9">7-9 yaş</option><option value="10-12">10-12 yaş</option><option value="13-14">13-14 yaş</option>
+            {ageGroups.map(a => <option key={a} value={a}>{a} yaş</option>)}
+          </select>
+          <select value={asnGender} onChange={e => { setAsnGender(e.target.value); setSelectedStd(new Set()) }}
+            className="px-2 py-2 border border-gray-200 rounded-lg text-sm outline-none">
+            <option value="">Kız & Erkek</option>
+            <option value="kiz">👧 Kız</option>
+            <option value="erkek">👦 Erkek</option>
           </select>
         </div>
-        <div className="text-xs text-gray-400 mb-2">{selectedStd.size} öğrenci seçildi</div>
-        <div className="space-y-1.5 max-h-72 overflow-y-auto">
+
+        {/* Toplu seçim */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-gray-400">{filteredUnassigned.length} öğrenci • {selectedStd.size} seçildi</span>
+          <div className="flex gap-2">
+            <button onClick={() => setSelectedStd(new Set(filteredUnassigned.map(s => s.id)))}
+              className="text-xs text-green-600 font-bold hover:underline">
+              Tümünü Seç ({filteredUnassigned.length})
+            </button>
+            <span className="text-gray-300">|</span>
+            <button onClick={() => setSelectedStd(new Set())}
+              className="text-xs text-red-400 font-bold hover:underline">Kaldır</button>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 max-h-64 overflow-y-auto">
           {filteredUnassigned.length === 0
             ? <div className="text-center py-8 text-gray-400 text-sm">Atanmamış öğrenci yok</div>
             : filteredUnassigned.map(s => (
@@ -263,10 +336,14 @@ export default function ClassroomsPage() {
                   <input type="checkbox" checked={selectedStd.has(s.id)}
                     onChange={() => setSelectedStd(p=>{const n=new Set(p);n.has(s.id)?n.delete(s.id):n.add(s.id);return n})}
                     className="w-4 h-4 accent-green-500 flex-shrink-0" />
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${s.gender==='erkek'?'bg-blue-100 text-blue-700':'bg-pink-100 text-pink-700'}`}>{(s.first_name + ' ' + s.last_name).charAt(0)}</div>
-                  <div>
-                    <div className="text-sm font-semibold">{(s.first_name + ' ' + s.last_name)}</div>
-                    <div className="text-xs text-gray-400">{calcAge(s.birth_date)} yaş • {s.mahalle||'—'} • {(s.parent_first_name + ' ' + s.parent_last_name)}</div>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${s.gender==='erkek'?'bg-blue-100 text-blue-700':'bg-pink-100 text-pink-700'}`}>
+                    {(s.first_name||'').charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold">{s.first_name} {s.last_name}</div>
+                    <div className="text-xs text-gray-400">
+                      {calcAge(s.birth_date)} yaş • {s.gender==='erkek'?'👦':'👧'} • {s.parent_name||`${s.parent_first_name||''} ${s.parent_last_name||''}`.trim()}
+                    </div>
                   </div>
                 </label>
               ))
