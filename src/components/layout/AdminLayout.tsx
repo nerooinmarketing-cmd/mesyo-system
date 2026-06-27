@@ -197,6 +197,7 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
             <div className="bg-black/10">
               {[
                 { to: '/admin/students', label: 'Öğrenci', moduleId: 'students' },
+                { to: '/admin/students/import', label: '📊 Excel Yükle', moduleId: 'students' },
                 { to: '/admin/registrations', label: 'Başvuru', moduleId: 'registrations', badge: true },
                 { to: '/admin/seasons', label: 'Sezonlar', moduleId: 'seasons' },
                 { to: '/admin/classrooms', label: 'Sınıf', moduleId: 'classrooms' },
