@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { Button, Modal, Input, useToast } from '@/components/ui'
 
@@ -51,7 +51,8 @@ const ICON_OPTIONS = ['📅','🎉','📝','👥','🌙','📚','🏖️','⭐',
 
 export default function CalendarPage() {
   const { toast } = useToast()
-  const [events, setEvents] = useState<Event[]>(DEMO_EVENTS)
+  const [events, setEvents] = useState<Event[]>([])
+  const [loading, setLoading] = useState(true)
   const [types, setTypes] = useState<EventType[]>(DEFAULT_TYPES)
   const [addModal, setAddModal] = useState(false)
   const [typeModal, setTypeModal] = useState(false)
@@ -59,16 +60,53 @@ export default function CalendarPage() {
   const [newType, setNewType] = useState({ label:'', icon:'⭐', colorIdx:0 })
   const today = new Date().toISOString().split('T')[0]
 
+  const token = () => localStorage.getItem('mesyo_token') || ''
+  const apiFetch = (url: string, opts?: RequestInit) =>
+    fetch(`/api${url}`, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}`, ...(opts?.headers||{}) } })
+
+  useEffect(() => {
+    apiFetch('/institution/events')
+      .then(r => r.json())
+      .then(data => {
+        setEvents((data || []).map((e: any) => ({
+          id: e.id,
+          title: e.title,
+          date: e.event_date,
+          typeId: e.event_type_id || 'etkinlik',
+          note: e.description,
+        })))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
   const upcoming = [...events].filter(e=>e.date>=today).sort((a,b)=>a.date.localeCompare(b.date))
   const past = [...events].filter(e=>e.date<today).sort((a,b)=>b.date.localeCompare(a.date))
 
   const getType = (typeId: string) => types.find(t=>t.id===typeId) || types[0]
 
-  const addEvent = () => {
+  const addEvent = async () => {
     if (!form.title||!form.date) { toast('Başlık ve tarih zorunlu','error'); return }
-    setEvents(p=>[...p,{id:Date.now(),title:form.title,date:form.date,typeId:form.typeId,note:form.note||undefined}])
-    toast('Etkinlik eklendi ✅','success'); setAddModal(false)
-    setForm({title:'',date:'',typeId:'etkinlik',note:''})
+    try {
+      const res = await apiFetch('/institution/events', {
+        method: 'POST',
+        body: JSON.stringify({ title: form.title, event_date: form.date, event_type_id: form.typeId, description: form.note || null })
+      })
+      const d = await res.json()
+      setEvents(p => [...p, { id: d.id, title: d.title, date: d.event_date, typeId: d.event_type_id || 'etkinlik', note: d.description }])
+      toast('Etkinlik eklendi ✅','success')
+      setAddModal(false)
+      setForm({title:'',date:'',typeId:'etkinlik',note:''})
+    } catch { toast('Eklenemedi','error') }
+  }
+
+  const deleteEvent = async (id: string | number) => {
+    if (!window.confirm('Bu etkinliği silmek istediğinize emin misiniz?')) return
+    try {
+      await apiFetch(`/institution/events/${id}`, { method: 'DELETE' })
+      setEvents(p => p.filter(e => e.id !== id))
+      toast('Etkinlik silindi','success')
+    } catch { toast('Silinemedi','error') }
   }
 
   const addType = () => {
@@ -90,6 +128,17 @@ export default function CalendarPage() {
   const delEvent = (id: number) => { setEvents(p=>p.filter(e=>e.id!==id)) }
 
   const daysUntil = (date:string) => Math.ceil((new Date(date).getTime()-new Date(today).getTime())/86400000)
+
+  if (loading) return (
+    <AdminLayout>
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <div className="text-center">
+          <div className="text-3xl mb-2 animate-pulse">📅</div>
+          <p className="text-sm">Yükleniyor...</p>
+        </div>
+      </div>
+    </AdminLayout>
+  )
 
   return (
     <AdminLayout>
@@ -140,7 +189,7 @@ export default function CalendarPage() {
                         </span>
                       </div>
                     </div>
-                    <button onClick={()=>delEvent(e.id)} className="text-gray-300 hover:text-red-400 text-xl flex-shrink-0">×</button>
+                    <button onClick={()=>deleteEvent(e.id)} className="text-gray-300 hover:text-red-400 text-xl flex-shrink-0">×</button>
                   </div>
                 )
               })
@@ -158,7 +207,7 @@ export default function CalendarPage() {
                   <div className="text-xs text-gray-400 w-20 flex-shrink-0">{e.date}</div>
                   <div className="text-sm text-gray-600 flex-1 truncate">{e.title}</div>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${t.color} flex-shrink-0`}>{t.icon} {t.label}</span>
-                  <button onClick={()=>delEvent(e.id)} className="text-gray-300 hover:text-red-400">×</button>
+                  <button onClick={()=>deleteEvent(e.id)} className="text-gray-300 hover:text-red-400">×</button>
                 </div>
               )
             })}
