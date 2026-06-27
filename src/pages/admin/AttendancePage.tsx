@@ -5,7 +5,7 @@ import { waLink, absenceMessage, dateRangeDays, cn, todayISO } from '@/lib/utils
 import { classroomsApi, studentsApi, attendanceApi, institutionApi } from '@/lib/api'
 import * as XLSX from 'xlsx'
 
-type Tab = 'gunluk' | 'ogretmen' | 'rapor'
+type Tab = 'gunluk' | 'ogretmen' | 'rapor' | 'gec'
 
 function exportAttXLSX(data: any[], filename: string) {
   const rows = data.map(r=>({
@@ -33,7 +33,13 @@ export default function AttendancePage() {
   const [clsStudents, setClsStudents] = useState<any[]>([])
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [attendance, setAttendance] = useState<Record<string,'present'|'absent'>>({})
+  const [arrivalTimes, setArrivalTimes] = useState<Record<string,string>>({})
   const [saving, setSaving] = useState(false)
+  const [lessonStart, setLessonStart] = useState('')
+  const [lessonEnd, setLessonEnd] = useState('')
+  const [savingLessonTime, setSavingLessonTime] = useState(false)
+  const [lateReport, setLateReport] = useState<any>(null)
+  const [lateLoading, setLateLoading] = useState(false)
 
   // Rapor
   const [rptStart, setRptStart] = useState(()=>{const d=new Date();d.setDate(d.getDate()-7);return d.toISOString().split('T')[0]})
@@ -72,6 +78,7 @@ export default function AttendancePage() {
   const handleClsChange = async (cid: string) => {
     setSelCls(cid)
     setAttendance({})
+    setArrivalTimes({})
     if (!cid) { setClsStudents([]); return }
     setLoadingStudents(true)
     try {
@@ -81,8 +88,17 @@ export default function AttendancePage() {
       ])
       setClsStudents(students)
       const map: Record<string,'present'|'absent'> = {}
-      existing.forEach((r: any) => { if (r.status === 'present' || r.status === 'absent') map[r.student_id] = r.status })
+      const times: Record<string,string> = {}
+      existing.forEach((r: any) => {
+        if (r.status === 'present' || r.status === 'absent') map[r.student_id] = r.status
+        if (r.arrival_time) times[r.student_id] = r.arrival_time.substring(0,5)
+      })
       setAttendance(map)
+      setArrivalTimes(times)
+      // Sınıfın ders saatini yükle
+      const cls = classrooms.find(c => c.id === cid)
+      if (cls?.lesson_start_time) setLessonStart(cls.lesson_start_time.substring(0,5))
+      if (cls?.lesson_end_time) setLessonEnd(cls.lesson_end_time.substring(0,5))
     } catch (e: any) {
       toast(e.message || 'Öğrenciler yüklenemedi', 'error')
     } finally {
@@ -111,7 +127,11 @@ export default function AttendancePage() {
     if(!Object.keys(attendance).length){toast('İşaretleme yapın','error');return}
     setSaving(true)
     try {
-      const entries = Object.entries(attendance).map(([student_id, status]) => ({ student_id, status }))
+      const entries = Object.entries(attendance).map(([student_id, status]) => {
+        const arrival_time = arrivalTimes[student_id] || null
+        const is_late = !!(arrival_time && lessonStart && status === 'present' && arrival_time > lessonStart)
+        return { student_id, status, arrival_time, is_late }
+      })
       await attendanceApi.save(selCls, selDate, entries)
       toast('Yoklama kaydedildi ✅','success')
     } catch (e: any) {
@@ -167,7 +187,7 @@ export default function AttendancePage() {
     <AdminLayout>
       {/* Tab */}
       <div className="flex bg-gray-100 rounded-xl p-1 mb-4">
-        {([['gunluk','📋 Günlük Yoklama'],['ogretmen','👨‍🏫 Öğretmen Takibi'],['rapor','📊 Devamsızlık Raporu']] as const).map(([t,label])=>(
+        {([['gunluk','📋 Günlük Yoklama'],['ogretmen','👨‍🏫 Öğretmen Takibi'],['rapor','📊 Devamsızlık Raporu'],['gec','⚠️ Geç Gelme']] as const).map(([t,label])=>(
           <button key={t} onClick={()=>setTab(t)}
             className={cn('flex-1 py-2 text-xs font-semibold rounded-lg transition-all',tab===t?'bg-white text-gray-900 shadow-sm':'text-gray-400')}>
             {label}
@@ -188,6 +208,38 @@ export default function AttendancePage() {
             <input type="date" value={selDate} onChange={e=>handleDateChange(e.target.value)}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500"/>
           </div>
+
+          {/* Ders Saati Ayarı */}
+          {selCls && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-wrap items-center gap-3">
+              <span className="text-xs font-bold text-amber-700">⏰ Ders Saati:</span>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-amber-600">Başlangıç</label>
+                <input type="time" value={lessonStart} onChange={e=>setLessonStart(e.target.value)}
+                  className="px-2 py-1 border border-amber-300 rounded-lg text-sm outline-none focus:border-amber-500 bg-white"/>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-amber-600">Bitiş</label>
+                <input type="time" value={lessonEnd} onChange={e=>setLessonEnd(e.target.value)}
+                  className="px-2 py-1 border border-amber-300 rounded-lg text-sm outline-none focus:border-amber-500 bg-white"/>
+              </div>
+              <button disabled={savingLessonTime} onClick={async()=>{
+                setSavingLessonTime(true)
+                try {
+                  await fetch(`/api/attendance/classrooms/${selCls}/lesson-time`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('mesyo_token')}` },
+                    body: JSON.stringify({ lesson_start_time: lessonStart || null, lesson_end_time: lessonEnd || null })
+                  })
+                  toast('Ders saati kaydedildi ✅', 'success')
+                } catch { toast('Kaydedilemedi', 'error') }
+                setSavingLessonTime(false)
+              }} className="px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-lg disabled:opacity-50">
+                {savingLessonTime ? '...' : '💾 Kaydet'}
+              </button>
+              {lessonStart && <span className="text-xs text-amber-600">Geç gelme: {lessonStart}'den sonra</span>}
+            </div>
+          )}
 
           {selCls && loadingStudents && (
             <div className="text-center py-12 text-gray-400">
@@ -226,7 +278,22 @@ export default function AttendancePage() {
                           <div className="text-sm font-bold text-gray-900 truncate">{fullName}</div>
                           <div className="text-xs text-gray-400">{parentName} • {s.parent_phone}</div>
                         </div>
-                        <div className="flex gap-1.5 flex-shrink-0">
+                        <div className="flex gap-1.5 flex-shrink-0 items-center">
+                          {status === 'present' && (
+                            <div className="flex items-center gap-1">
+                              <input type="time" value={arrivalTimes[s.id] || ''}
+                                onChange={e => setArrivalTimes(p => ({...p, [s.id]: e.target.value}))}
+                                className={cn(
+                                  'px-2 py-1 border rounded-lg text-xs outline-none w-24',
+                                  lessonStart && arrivalTimes[s.id] && arrivalTimes[s.id] > lessonStart
+                                    ? 'border-orange-400 bg-orange-50 text-orange-700'
+                                    : 'border-gray-200 text-gray-600'
+                                )}/>
+                              {lessonStart && arrivalTimes[s.id] && arrivalTimes[s.id] > lessonStart && (
+                                <span className="text-orange-500 text-[10px] font-bold">⚠️ Geç</span>
+                              )}
+                            </div>
+                          )}
                           <button onClick={()=>mark(s.id,'present')}
                             className={cn('px-3 py-1.5 rounded-lg text-xs font-bold border-[1.5px] transition-all',status==='present'?'bg-green-500 text-white border-green-500':'border-green-500 text-green-600 bg-white')}>
                             ✓ Geldi
@@ -446,6 +513,104 @@ export default function AttendancePage() {
             </>
           )}
           {rptData.length===0&&<EmptyState icon="📊" title="Rapor oluşturun" subtitle="Tarih aralığı seçip Raporu Oluştur'a tıklayın"/>}
+        </div>
+      )}
+
+      {/* GEÇ GELME RAPORU */}
+      {tab==='gec' && (
+        <div className="space-y-3">
+          <div className="flex gap-2 flex-wrap items-end">
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase">Sınıf</label>
+              <select value={rptCls} onChange={e=>setRptCls(e.target.value)}
+                className="block mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
+                <option value="">Sınıf seçin</option>
+                {classrooms.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase">Başlangıç</label>
+              <input type="date" value={rptStart} onChange={e=>setRptStart(e.target.value)}
+                className="block mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500"/>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase">Bitiş</label>
+              <input type="date" value={rptEnd} onChange={e=>setRptEnd(e.target.value)}
+                className="block mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500"/>
+            </div>
+            <button disabled={!rptCls||lateLoading} onClick={async()=>{
+              setLateLoading(true)
+              try {
+                const token = localStorage.getItem('mesyo_token')
+                const res = await fetch(`/api/attendance/late-report?classroom_id=${rptCls}&start=${rptStart}&end=${rptEnd}`, {
+                  headers: { Authorization: `Bearer ${token}` }
+                })
+                const d = await res.json()
+                setLateReport(d)
+              } catch { toast('Rapor oluşturulamadı', 'error') }
+              setLateLoading(false)
+            }} className="px-4 py-2 bg-amber-500 text-white text-sm font-bold rounded-lg disabled:opacity-50">
+              {lateLoading ? '⏳...' : '⚠️ Raporu Oluştur'}
+            </button>
+          </div>
+
+          {lateReport && (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+                  <div className="text-2xl font-bold text-amber-700">{lateReport.total_late_records}</div>
+                  <div className="text-xs text-amber-600">Toplam Geç Gelme</div>
+                </div>
+                <div className="bg-white border border-gray-100 rounded-xl p-4 text-center">
+                  <div className="text-2xl font-bold text-gray-700">{lateReport.students.length}</div>
+                  <div className="text-xs text-gray-500">Geç Gelen Öğrenci</div>
+                </div>
+                <div className="bg-white border border-gray-100 rounded-xl p-4 text-center">
+                  <div className="text-lg font-bold text-gray-700">{lateReport.classroom?.lesson_start_time?.substring(0,5) || '—'}</div>
+                  <div className="text-xs text-gray-500">Ders Başlangıcı</div>
+                </div>
+              </div>
+
+              <Card>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        {['Öğrenci','Geç Gelme Sayısı','Geliş Saatleri','Veli'].map(h=>(
+                          <th key={h} className="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {lateReport.students.map((s: any) => (
+                        <tr key={s.student_id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5 font-semibold text-gray-900">{s.full_name}</td>
+                          <td className="px-4 py-2.5">
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-full">
+                              {s.late_count} kez
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-gray-500">
+                            {s.records.map((r: any) => (
+                              <span key={r.date} className="inline-block mr-2">
+                                {r.date}: <strong>{r.arrival_time?.substring(0,5) || '—'}</strong>
+                              </span>
+                            ))}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <a href={waLink(s.parent_phone, `Sayın ${s.parent_name}, ${s.full_name} adlı öğrenciniz bu dönemde ${s.late_count} kez derse geç gelmiştir. Lütfen dikkat ediniz.`)}
+                              target="_blank" rel="noreferrer"
+                              className="px-2 py-1 bg-[#25D366] text-white text-xs font-semibold rounded-lg">📱</a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </>
+          )}
+          {!lateReport && <EmptyState icon="⚠️" title="Geç Gelme Raporu" subtitle="Sınıf ve tarih aralığı seçip raporu oluşturun"/>}
         </div>
       )}
     </AdminLayout>
