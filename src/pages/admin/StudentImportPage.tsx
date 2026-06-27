@@ -9,10 +9,15 @@ interface ParsedStudent {
   last_name: string
   birth_date?: string
   gender: string
-  parent_name: string
-  parent_phone: string
+  age?: number
   tc_no?: string
-  mahalle?: string
+  address?: string
+  parent_name: string
+  parent_first_name?: string
+  parent_last_name?: string
+  parent_address?: string
+  parent_phone: string
+  registration_date?: string
   classroom_name?: string
   classroom_id?: string
   error?: string
@@ -47,15 +52,21 @@ export default function StudentImportPage() {
         const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
 
         const parsed: ParsedStudent[] = rows.slice(0, 200).map((row, i) => {
-          const first_name = String(row['Ad *'] || row['Ad'] || row['ad'] || '').trim()
-          const last_name = String(row['Soyad *'] || row['Soyad'] || row['soyad'] || '').trim()
-          const gender_raw = String(row['Cinsiyet (kiz/erkek) *'] || row['Cinsiyet'] || row['cinsiyet'] || 'kiz').trim().toLowerCase()
-          const parent_name = String(row['Veli Adı Soyadı *'] || row['Veli Adı'] || row['veli_adi'] || '').trim()
-          const parent_phone = String(row['Veli Telefonu *'] || row['Veli Telefonu'] || row['telefon'] || '').trim()
-          const birth_date_raw = String(row['Doğum Tarihi (YYYY-AA-GG)'] || row['Doğum Tarihi'] || row['dogum_tarihi'] || '').trim()
-          const tc_no = String(row['TC Kimlik No'] || row['TC'] || '').trim()
-          const mahalle = String(row['Mahalle'] || row['mahalle'] || '').trim()
-          const classroom_name = String(row['Sınıf Adı'] || row['Sınıf'] || row['sinif'] || '').trim()
+          const first_name = String(row['ADI *'] || row['ADI'] || row['Ad *'] || row['Ad'] || '').trim()
+          const last_name = String(row['SOYADI *'] || row['SOYADI'] || row['Soyad *'] || row['Soyad'] || '').trim()
+          const gender_raw = String(row['CİNSİYET *'] || row['CİNSİYET'] || row['Cinsiyet'] || 'kiz').trim().toLowerCase()
+          const parent_first_name = String(row['VELİ ADI *'] || row['VELİ ADI'] || '').trim()
+          const parent_last_name = String(row['VELİ SOYADI *'] || row['VELİ SOYADI'] || '').trim()
+          const parent_name = parent_first_name && parent_last_name ? `${parent_first_name} ${parent_last_name}` : (parent_first_name || parent_last_name || String(row['Veli Adı Soyadı *'] || row['Veli Adı'] || '').trim())
+          const parent_phone = String(row['GSM NUMARASI *'] || row['GSM NUMARASI'] || row['Veli Telefonu *'] || row['Veli Telefonu'] || '').trim()
+          const parent_address = String(row['VELİ ADRESİ'] || row['Veli Adresi'] || '').trim()
+          const birth_date_raw = String(row['DOĞUM TARİHİ'] || row['Doğum Tarihi'] || '').trim()
+          const tc_no = String(row['TC NO'] || row['TC Kimlik No'] || row['TC'] || '').trim()
+          const address = String(row['ADRES'] || row['Adres'] || '').trim()
+          const age_raw = row['YAŞI'] || row['Yaşı'] || row['YAŞ'] || ''
+          const age = age_raw ? parseInt(String(age_raw)) : undefined
+          const registration_date_raw = String(row['KAYIT TARİHİ'] || row['Kayıt Tarihi'] || '').trim()
+          const classroom_name = String(row['SINIF'] || row['Sınıf Adı'] || row['Sınıf'] || '').trim()
 
           const gender = gender_raw === 'erkek' ? 'erkek' : 'kiz'
 
@@ -86,11 +97,23 @@ export default function StudentImportPage() {
             c.name.toLowerCase().includes(classroom_name.toLowerCase())
           )
 
+          // Kayıt tarihi formatla
+          let registration_date = ''
+          if (registration_date_raw && /^\d{4}-\d{2}-\d{2}$/.test(registration_date_raw)) {
+            registration_date = registration_date_raw
+          }
+
           return {
-            first_name, last_name, gender, parent_name, parent_phone,
-            birth_date: birth_date || undefined,
+            first_name, last_name, gender,
+            age: isNaN(age as number) ? undefined : age,
             tc_no: tc_no || undefined,
-            mahalle: mahalle || undefined,
+            address: address || undefined,
+            parent_name, parent_phone,
+            parent_first_name: parent_first_name || undefined,
+            parent_last_name: parent_last_name || undefined,
+            parent_address: parent_address || undefined,
+            birth_date: birth_date || undefined,
+            registration_date: registration_date || undefined,
             classroom_name: classroom_name || undefined,
             classroom_id: cls?.id,
             error: error || undefined,
@@ -124,11 +147,16 @@ export default function StudentImportPage() {
             last_name: s.last_name,
             full_name: `${s.first_name} ${s.last_name}`,
             gender: s.gender,
+            age: s.age,
+            tc_no: s.tc_no,
+            address: s.address,
             parent_name: s.parent_name,
+            parent_first_name: s.parent_first_name,
+            parent_last_name: s.parent_last_name,
+            parent_address: s.parent_address,
             parent_phone: s.parent_phone,
             birth_date: s.birth_date,
-            tc_no: s.tc_no,
-            mahalle: s.mahalle,
+            registration_date: s.registration_date,
             classroom_id: s.classroom_id,
           }))
         })
