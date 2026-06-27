@@ -1,15 +1,20 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { cn, waLink, absenceMessage, todayISO } from '@/lib/utils'
+import { cn, waLink, absenceMessage, assignmentMessage, todayISO } from '@/lib/utils'
 import { classroomsApi, studentsApi, attendanceApi } from '@/lib/api'
 import { useToast } from '@/components/ui'
 
 type Tab = 'yoklama' | 'odev' | 'sinifim' | 'profil'
 
+const apiToken = () => localStorage.getItem('mesyo_token') || ''
+const apiFetch = (url: string, opts?: RequestInit) =>
+  fetch(`/api${url}`, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken()}`, ...(opts?.headers || {}) } })
+
 export default function YoklamaPage() {
   const { user, logout } = useAuth()
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('yoklama')
+  const [instName, setInstName] = useState('Kurumumuz')
 
   // Veri state
   const [loading, setLoading] = useState(true)
@@ -21,7 +26,7 @@ export default function YoklamaPage() {
   const [attendance, setAttendance] = useState<Record<string,'present'|'absent'>>({})
   const [saving, setSaving] = useState(false)
 
-  // WhatsApp — numara localStorage'da, numara gerekmeden wa.me/ çalışır
+  // WhatsApp
   const [waPhone, setWaPhone] = useState<string>(() => localStorage.getItem('teacher_wa_' + (user?.id||'')) || '')
   const [waInput, setWaInput] = useState('')
   const [waStep, setWaStep] = useState<'idle'|'input'|'connected'>(() =>
@@ -32,6 +37,10 @@ export default function YoklamaPage() {
   const [odevText, setOdevText] = useState('')
   const [selStudents, setSelStudents] = useState<string[]>([])
   const [odevAll, setOdevAll] = useState(true)
+  const [odevSource, setOdevSource] = useState<'manual' | 'curriculum'>('manual')
+  const [topics, setTopics] = useState<any[]>([])
+  const [selTopic, setSelTopic] = useState<any>(null)
+  const [assignmentStudents, setAssignmentStudents] = useState<Record<string, string[]>>({}) // topicId -> studentIds
 
   // Veri yükle
   useEffect(() => {
@@ -40,7 +49,6 @@ export default function YoklamaPage() {
       setLoading(true)
       try {
         const classes = await classroomsApi.list()
-        // Öğretmenin atandığı sınıfı bul (teacher_id veya teacher_name ile)
         const cls = classes.find((c: any) =>
           c.teacher_id === user?.id ||
           c.teacher_name === user?.full_name
@@ -51,6 +59,12 @@ export default function YoklamaPage() {
 
         const students = await studentsApi.list({ classroom_id: cls.id, status: 'approved' })
         if (!cancelled) setMyStudents(students)
+
+        // Müfredat konularını yükle
+        apiFetch(`/curriculum/topics?classroom_id=${cls.id}`).then(r => r.json()).then(setTopics).catch(() => {})
+
+        // Kurum adını al
+        apiFetch('/institution/me').then(r => r.json()).then((d: any) => setInstName(d?.name || 'Kurumumuz')).catch(() => {})
       } catch (e: any) {
         if (!cancelled) toast(e.message || 'Veriler yüklenemedi', 'error')
       } finally {
@@ -282,63 +296,176 @@ export default function YoklamaPage() {
         {/* ÖDEV */}
         {tab === 'odev' && (
           <div className="space-y-3">
+            {/* Ödev kaynağı seçimi */}
             <div className="bg-white rounded-xl shadow-sm p-4">
-              <div className="text-sm font-bold text-gray-900 mb-3">📚 Ödev Metni</div>
-              <textarea value={odevText} onChange={e => setOdevText(e.target.value)}
-                rows={4} placeholder="Ödev açıklamasını yazın..."
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-green-500 resize-none" />
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-4">
-              <div className="text-sm font-bold text-gray-900 mb-3">Kime Gönderilecek?</div>
-              <div className="flex gap-2 mb-3">
-                <button onClick={() => setOdevAll(true)}
+              <div className="text-sm font-bold text-gray-900 mb-3">📚 Ödev Kaynağı</div>
+              <div className="flex gap-2">
+                <button onClick={() => setOdevSource('manual')}
                   className={cn('flex-1 py-2 rounded-xl border-2 text-xs font-bold transition-all',
-                    odevAll ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500')}>
-                  👥 Tüm Sınıf ({myStudents.length})
+                    odevSource === 'manual' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500')}>
+                  ✏️ Manuel Yaz
                 </button>
-                <button onClick={() => setOdevAll(false)}
+                <button onClick={() => setOdevSource('curriculum')}
                   className={cn('flex-1 py-2 rounded-xl border-2 text-xs font-bold transition-all',
-                    !odevAll ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500')}>
-                  🎯 Seç
+                    odevSource === 'curriculum' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500')}>
+                  📋 Müfredattan Seç
                 </button>
               </div>
-
-              {!odevAll && (
-                <div className="space-y-1.5 mb-3">
-                  {myStudents.map(s => (
-                    <label key={s.id} className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all',
-                      selStudents.includes(s.id) ? 'border-green-400 bg-green-50' : 'border-gray-200')}>
-                      <input type="checkbox" checked={selStudents.includes(s.id)}
-                        onChange={() => setSelStudents(p => p.includes(s.id) ? p.filter(x => x !== s.id) : [...p, s.id])}
-                        className="w-4 h-4 accent-green-500" />
-                      <span className="text-sm font-semibold text-gray-800">{s.first_name} {s.last_name}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-
-              <button onClick={sendAllOdev}
-                className="w-full py-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold rounded-xl text-sm transition-colors">
-                📱 {odevAll ? `Tüm Sınıfa Gönder (${myStudents.length})` : `Seçilenlere Gönder (${selStudents.length})`}
-              </button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 text-sm font-bold text-gray-900">Tek Tek Gönder</div>
-              {myStudents.map(s => (
-                <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900">{s.first_name} {s.last_name}</div>
-                    <div className="text-xs text-gray-400">{s.parent_first_name} {s.parent_last_name}</div>
+            {/* Manuel ödev */}
+            {odevSource === 'manual' && (
+              <>
+                <div className="bg-white rounded-xl shadow-sm p-4">
+                  <div className="text-sm font-bold text-gray-900 mb-3">📝 Ödev Metni</div>
+                  <textarea value={odevText} onChange={e => setOdevText(e.target.value)}
+                    rows={4} placeholder="Ödev açıklamasını yazın..."
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-green-500 resize-none" />
+                </div>
+                <div className="bg-white rounded-xl shadow-sm p-4">
+                  <div className="text-sm font-bold text-gray-900 mb-3">Kime Gönderilecek?</div>
+                  <div className="flex gap-2 mb-3">
+                    <button onClick={() => setOdevAll(true)}
+                      className={cn('flex-1 py-2 rounded-xl border-2 text-xs font-bold transition-all',
+                        odevAll ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500')}>
+                      👥 Tüm Sınıf ({myStudents.length})
+                    </button>
+                    <button onClick={() => setOdevAll(false)}
+                      className={cn('flex-1 py-2 rounded-xl border-2 text-xs font-bold transition-all',
+                        !odevAll ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500')}>
+                      🎯 Seç
+                    </button>
                   </div>
-                  <button onClick={() => sendOdev(s)}
-                    className="px-3 py-1.5 bg-[#25D366] text-white text-xs font-semibold rounded-lg">
-                    📱 Gönder
+                  {!odevAll && (
+                    <div className="space-y-1.5 mb-3">
+                      {myStudents.map(s => (
+                        <label key={s.id} className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all',
+                          selStudents.includes(s.id) ? 'border-green-400 bg-green-50' : 'border-gray-200')}>
+                          <input type="checkbox" checked={selStudents.includes(s.id)}
+                            onChange={() => setSelStudents(p => p.includes(s.id) ? p.filter(x => x !== s.id) : [...p, s.id])}
+                            className="w-4 h-4 accent-green-500" />
+                          <span className="text-sm font-semibold text-gray-800">{s.first_name} {s.last_name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={sendAllOdev}
+                    className="w-full py-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold rounded-xl text-sm transition-colors">
+                    📱 {odevAll ? `Tüm Sınıfa Gönder (${myStudents.length})` : `Seçilenlere Gönder (${selStudents.length})`}
                   </button>
                 </div>
-              ))}
-            </div>
+              </>
+            )}
+
+            {/* Müfredattan ödev */}
+            {odevSource === 'curriculum' && (
+              <div className="space-y-3">
+                {topics.length === 0 ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center text-sm text-amber-700">
+                    ⚠️ Henüz müfredat konusu eklenmemiş. Cami sorumlusu müfredatı girmelidir.
+                  </div>
+                ) : (
+                  topics.map(topic => {
+                    const selIds = assignmentStudents[topic.id] || []
+                    const allSel = selIds.length === myStudents.length
+                    return (
+                      <div key={topic.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-gray-100">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-gray-900 text-sm">{topic.title}</span>
+                            <span className={cn('text-xs px-2 py-0.5 rounded-full font-bold',
+                              topic.period_type === 'daily' ? 'bg-blue-100 text-blue-700' :
+                              topic.period_type === 'weekly' ? 'bg-green-100 text-green-700' :
+                              'bg-purple-100 text-purple-700')}>
+                              {topic.period_type === 'daily' ? '📅 Günlük' : topic.period_type === 'weekly' ? '📆 Haftalık' : '🗓️ Aylık'}
+                            </span>
+                          </div>
+                          {topic.description && <p className="text-xs text-gray-500">{topic.description}</p>}
+                        </div>
+
+                        {/* Öğrenci seçimi */}
+                        <div className="p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-gray-500">Öğrenci Seç</span>
+                            <button onClick={() => setAssignmentStudents(p => ({
+                              ...p,
+                              [topic.id]: allSel ? [] : myStudents.map(s => s.id)
+                            }))} className="text-xs text-green-600 font-bold">
+                              {allSel ? 'Tümünü Kaldır' : 'Tümünü Seç'}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 mb-3">
+                            {myStudents.map(s => (
+                              <label key={s.id} className={cn('flex items-center gap-2 px-2 py-1.5 rounded-lg border cursor-pointer text-xs transition-all',
+                                selIds.includes(s.id) ? 'border-green-400 bg-green-50 text-green-700 font-semibold' : 'border-gray-200 text-gray-600')}>
+                                <input type="checkbox" checked={selIds.includes(s.id)}
+                                  onChange={() => setAssignmentStudents(p => ({
+                                    ...p,
+                                    [topic.id]: selIds.includes(s.id)
+                                      ? selIds.filter(x => x !== s.id)
+                                      : [...selIds, s.id]
+                                  }))} className="w-3 h-3 accent-green-500" />
+                                {s.first_name} {s.last_name}
+                              </label>
+                            ))}
+                          </div>
+
+                          {selIds.length > 0 && (
+                            <button onClick={async () => {
+                              try {
+                                await apiFetch('/curriculum/assignments', {
+                                  method: 'POST',
+                                  body: JSON.stringify({
+                                    topic_id: topic.id,
+                                    classroom_id: myClass?.id,
+                                    title: topic.title,
+                                    description: topic.description,
+                                    student_ids: selIds,
+                                  })
+                                })
+                                // WhatsApp gönder
+                                const targets = myStudents.filter(s => selIds.includes(s.id))
+                                targets.forEach((s, i) => {
+                                  const pName = s.parent_name || `${s.parent_first_name || ''} ${s.parent_last_name || ''}`.trim() || 'Veli'
+                                  const msg = assignmentMessage(
+                                    `${s.first_name} ${s.last_name}`, pName,
+                                    myClass?.name || '', topic.title, topic.description || '', undefined, instName
+                                  )
+                                  setTimeout(() => window.open(waLink(s.parent_phone, msg), '_blank'), i * 700)
+                                })
+                                toast(`${selIds.length} öğrenciye ödev verildi ✅`, 'success')
+                                setAssignmentStudents(p => ({ ...p, [topic.id]: [] }))
+                              } catch { toast('Gönderilemedi', 'error') }
+                            }} className="w-full py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-xl">
+                              📱 {selIds.length} Öğrenciye Ödev Ver + WhatsApp Gönder
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            )}
+
+            {/* Tek tek gönder (sadece manual modda) */}
+            {odevSource === 'manual' && (
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 text-sm font-bold text-gray-900">Tek Tek Gönder</div>
+                {myStudents.map(s => (
+                  <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-gray-900">{s.first_name} {s.last_name}</div>
+                      <div className="text-xs text-gray-400">{s.parent_first_name} {s.parent_last_name}</div>
+                    </div>
+                    <button onClick={() => sendOdev(s)}
+                      className="px-3 py-1.5 bg-[#25D366] text-white text-xs font-semibold rounded-lg">
+                      📱 Gönder
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
