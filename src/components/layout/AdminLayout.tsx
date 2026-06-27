@@ -202,6 +202,7 @@ export function AdminLayout({ children, pendingCount = 0 }: AdminLayoutProps) {
                 { to: '/admin/seasons', label: 'Sezonlar', moduleId: 'seasons' },
                 { to: '/admin/classrooms', label: 'Sınıf', moduleId: 'classrooms' },
                 { to: '/admin/teachers', label: 'Öğretmen', moduleId: 'teachers' },
+                { to: '/admin/curriculum', label: 'Müfredat', moduleId: 'assignments' },
                 { to: '/admin/assignments', label: 'Ödev', moduleId: 'assignments' },
                 { to: '/admin/attendance', label: 'Yoklama', moduleId: 'attendance' },
               ].filter(i => isActive(i.moduleId) || ['seasons','classrooms','teachers'].includes(i.moduleId)).map(item => (

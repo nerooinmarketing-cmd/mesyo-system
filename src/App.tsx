@@ -10,6 +10,7 @@ import SohbetKayitPage from '@/pages/public/SohbetKayitPage'
 import KervanOyunPage from '@/pages/public/KervanOyunPage'
 import KervanAdminPage from '@/pages/admin/KervanAdminPage'
 import StudentImportPage from '@/pages/admin/StudentImportPage'
+import CurriculumPage from '@/pages/admin/CurriculumPage'
 import StudentProfilePage from '@/pages/admin/StudentProfilePage'
 
 import ModulesPage from '@/pages/superadmin/ModulesPage'
@@ -120,6 +121,7 @@ export default function App() {
             <Route path="/admin/game-guide"     element={<Guard roles={['institution_admin','superadmin']}><GameGuidePage /></Guard>} />
             <Route path="/admin/kervan"         element={<Guard roles={['institution_admin','superadmin']}><KervanAdminPage /></Guard>} />
             <Route path="/admin/students/import" element={<Guard roles={['institution_admin','superadmin']}><StudentImportPage /></Guard>} />
+            <Route path="/admin/curriculum"       element={<Guard roles={['institution_admin','superadmin']}><CurriculumPage /></Guard>} />
             <Route path="/admin/accounting"     element={<Guard roles={['institution_admin','superadmin']}><AccountingPage /></Guard>} />
             <Route path="/veli/:studentId"      element={<ParentPortalPage />} />
             <Route path="/admin/calendar"      element={<Guard roles={['institution_admin','superadmin']}><CalendarPage /></Guard>} />
