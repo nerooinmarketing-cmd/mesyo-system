@@ -519,12 +519,22 @@ export default function AttendancePage() {
       {/* GEÇ GELME RAPORU */}
       {tab==='gec' && (
         <div className="space-y-3">
+          {/* Mod seçimi */}
+          <div className="flex bg-gray-100 rounded-xl p-1">
+            <button onClick={()=>{setLateReport(null)}} className={cn('flex-1 py-2 text-xs font-bold rounded-lg transition-all', !lateReport || lateReport.classroom ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400')}>
+              🏫 Sınıf Bazlı
+            </button>
+            <button onClick={()=>{setLateReport(null)}} className={cn('flex-1 py-2 text-xs font-bold rounded-lg transition-all', lateReport && !lateReport.classroom ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400')}>
+              👤 Tüm Öğrenciler
+            </button>
+          </div>
+
           <div className="flex gap-2 flex-wrap items-end">
             <div>
-              <label className="text-xs font-bold text-gray-500 uppercase">Sınıf</label>
+              <label className="text-xs font-bold text-gray-500 uppercase">Sınıf (opsiyonel)</label>
               <select value={rptCls} onChange={e=>setRptCls(e.target.value)}
                 className="block mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500">
-                <option value="">Sınıf seçin</option>
+                <option value="">Tüm sınıflar</option>
                 {classrooms.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
@@ -538,13 +548,14 @@ export default function AttendancePage() {
               <input type="date" value={rptEnd} onChange={e=>setRptEnd(e.target.value)}
                 className="block mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-green-500"/>
             </div>
-            <button disabled={!rptCls||lateLoading} onClick={async()=>{
+            <button disabled={lateLoading} onClick={async()=>{
               setLateLoading(true)
               try {
                 const token = localStorage.getItem('mesyo_token')
-                const res = await fetch(`/api/attendance/late-report?classroom_id=${rptCls}&start=${rptStart}&end=${rptEnd}`, {
-                  headers: { Authorization: `Bearer ${token}` }
-                })
+                let url = rptCls
+                  ? `/api/attendance/late-report?classroom_id=${rptCls}&start=${rptStart}&end=${rptEnd}`
+                  : `/api/attendance/late-report/all?start=${rptStart}&end=${rptEnd}`
+                const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
                 const d = await res.json()
                 setLateReport(d)
               } catch { toast('Rapor oluşturulamadı', 'error') }
@@ -558,16 +569,22 @@ export default function AttendancePage() {
             <>
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
-                  <div className="text-2xl font-bold text-amber-700">{lateReport.total_late_records}</div>
+                  <div className="text-2xl font-bold text-amber-700">
+                    {lateReport.total_late_records ?? lateReport.total ?? 0}
+                  </div>
                   <div className="text-xs text-amber-600">Toplam Geç Gelme</div>
                 </div>
                 <div className="bg-white border border-gray-100 rounded-xl p-4 text-center">
-                  <div className="text-2xl font-bold text-gray-700">{lateReport.students.length}</div>
+                  <div className="text-2xl font-bold text-gray-700">
+                    {lateReport.students?.length ?? 0}
+                  </div>
                   <div className="text-xs text-gray-500">Geç Gelen Öğrenci</div>
                 </div>
                 <div className="bg-white border border-gray-100 rounded-xl p-4 text-center">
-                  <div className="text-lg font-bold text-gray-700">{lateReport.classroom?.lesson_start_time?.substring(0,5) || '—'}</div>
-                  <div className="text-xs text-gray-500">Ders Başlangıcı</div>
+                  <div className="text-lg font-bold text-gray-700">
+                    {lateReport.classroom?.lesson_start_time?.substring(0,5) || (rptCls ? '—' : 'Tüm Sınıflar')}
+                  </div>
+                  <div className="text-xs text-gray-500">{lateReport.classroom ? 'Ders Başlangıcı' : 'Kapsam'}</div>
                 </div>
               </div>
 
@@ -576,29 +593,36 @@ export default function AttendancePage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-100">
-                        {['Öğrenci','Geç Gelme Sayısı','Geliş Saatleri','Veli'].map(h=>(
+                        {['#','Öğrenci','Geç Gelme','Geliş Saatleri','Veli'].map(h=>(
                           <th key={h} className="px-4 py-2.5 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {lateReport.students.map((s: any) => (
+                      {(lateReport.students || []).map((s: any, i: number) => (
                         <tr key={s.student_id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5 text-gray-400 text-xs font-bold">{i+1}</td>
                           <td className="px-4 py-2.5 font-semibold text-gray-900">{s.full_name}</td>
                           <td className="px-4 py-2.5">
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-full">
+                            <span className={cn(
+                              'px-2 py-0.5 text-xs font-bold rounded-full',
+                              s.late_count >= 5 ? 'bg-red-100 text-red-700' :
+                              s.late_count >= 3 ? 'bg-orange-100 text-orange-700' :
+                              'bg-amber-100 text-amber-700'
+                            )}>
                               {s.late_count} kez
                             </span>
                           </td>
                           <td className="px-4 py-2.5 text-xs text-gray-500">
-                            {s.records.map((r: any) => (
-                              <span key={r.date} className="inline-block mr-2">
+                            {s.records.slice(0,5).map((r: any) => (
+                              <span key={r.date} className="inline-block mr-2 mb-1 px-1.5 py-0.5 bg-gray-100 rounded">
                                 {r.date}: <strong>{r.arrival_time?.substring(0,5) || '—'}</strong>
                               </span>
                             ))}
+                            {s.records.length > 5 && <span className="text-gray-400">+{s.records.length-5} daha</span>}
                           </td>
                           <td className="px-4 py-2.5">
-                            <a href={waLink(s.parent_phone, `Sayın ${s.parent_name}, ${s.full_name} adlı öğrenciniz bu dönemde ${s.late_count} kez derse geç gelmiştir. Lütfen dikkat ediniz.`)}
+                            <a href={waLink(s.parent_phone, `Sayın ${s.parent_name},\n\n${s.full_name} adlı öğrenciniz bu dönemde ${s.late_count} kez derse geç gelmiştir.\n\nGeliş saatleri:\n${s.records.map((r:any)=>`• ${r.date}: ${r.arrival_time?.substring(0,5)||'—'}`).join('\n')}\n\nLütfen dikkat ediniz. 🌿`)}
                               target="_blank" rel="noreferrer"
                               className="px-2 py-1 bg-[#25D366] text-white text-xs font-semibold rounded-lg">📱</a>
                           </td>
